@@ -1,0 +1,96 @@
+Metadata-Version: 2.4
+Name: atomecon
+Version: 0.1.0
+Summary: Lightweight green chemistry metrics (atom economy, E-factor, yield) from plain chemical formulas - no RDKit, no SMILES.
+Author-email: Your Name <you@example.com>
+License: MIT
+Project-URL: Homepage, https://github.com/YOUR_USERNAME/atomecon
+Project-URL: Issues, https://github.com/YOUR_USERNAME/atomecon/issues
+Keywords: chemistry,green-chemistry,atom-economy,stoichiometry,e-factor
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Intended Audience :: Education
+Classifier: Topic :: Scientific/Engineering :: Chemistry
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+
+# atomecon
+
+Lightweight green chemistry metrics — atom economy, theoretical yield, percent yield, and E-factor — computed from **plain chemical formulas**. No RDKit, no SMILES, no heavy dependencies.
+
+## Why this exists
+
+Existing chemistry packages either don't cover green chemistry metrics at all (they focus on general stoichiometry), or require RDKit and SMILES notation to calculate even a single metric like atom economy. `atomecon` bundles the standard metrics together, takes formulas the way you'd write them in a chemistry class (`"C2H5OH"`, not `"CCO"`), and has zero dependencies.
+
+## Install
+
+```bash
+pip install -e .
+```
+
+(Once published: `pip install atomecon`)
+
+## Concepts
+
+- **Atom economy** is *theoretical* — it only depends on the balanced equation and molar masses. It's always computable, with no lab data.
+- **Theoretical yield**, **percent yield**, and **E-factor** are *experimental* — they depend on the real masses of reactants you used and the real mass of product you isolated. These vary run to run.
+
+`atomecon` keeps this distinction explicit: `atom_economy()` takes no arguments beyond the reaction itself, while `e_factor()` and `percent_yield()` require you to supply real measured masses.
+
+## Quick start
+
+```python
+from atomecon import Reaction
+
+# Aspirin synthesis: salicylic acid + acetic anhydride -> aspirin + acetic acid
+rxn = Reaction(
+    reactants={"C7H6O3": 1, "C4H6O3": 1},
+    products={"C9H8O4": 1, "C2H4O2": 1},
+    desired_product="C9H8O4",
+)
+
+print(rxn.atom_economy())
+# 74.4  (theoretical - no lab data needed)
+
+theoretical_g = rxn.theoretical_yield_g({"C7H6O3": 5.0, "C4H6O3": 5.0})
+print(theoretical_g)
+
+pct_yield = rxn.percent_yield({"C7H6O3": 5.0, "C4H6O3": 5.0}, actual_yield_g=4.2)
+print(pct_yield)
+
+e_fac = rxn.e_factor({"C7H6O3": 5.0, "C4H6O3": 5.0}, actual_yield_g=4.2)
+print(e_fac)
+
+print(rxn.summary(
+    reactant_masses_g={"C7H6O3": 5.0, "C4H6O3": 5.0},
+    actual_yield_g=4.2,
+))
+```
+
+## Formula syntax
+
+Supports condensed formulas and nested parentheses:
+
+```python
+from atomecon import parse_formula, molar_mass
+
+parse_formula("Ca(OH)2")     # {"Ca": 1, "O": 2, "H": 2}
+parse_formula("Al2(SO4)3")   # {"Al": 2, "S": 3, "O": 12}
+molar_mass("C6H12O6")        # 180.156
+```
+
+## Reaction balance checking
+
+`Reaction` verifies the equation is atom-balanced on construction and raises a clear error if it isn't (atom economy is not meaningful for an unbalanced equation). Pass `allow_unbalanced=True` to override.
+
+## Running tests
+
+```bash
+pip install pytest
+pytest
+```
+
+## License
+
+MIT

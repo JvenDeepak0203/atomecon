@@ -1,0 +1,94 @@
+"""
+Parsing of plain-text chemical formulas (e.g. "C2H5OH", "Ca(OH)2")
+into element counts, and molar mass calculation from those formulas.
+
+No SMILES, no structural chemistry, no external dependencies -
+just what's needed for stoichiometry-level calculations.
+"""
+
+from typing import Dict
+
+from .elements import ATOMIC_MASSES
+
+
+def parse_formula(formula: str) -> Dict[str, int]:
+    """
+    Parse a chemical formula into a dict of {element_symbol: count}.
+
+    Supports nested parentheses and multipliers, e.g.:
+        "H2O"        -> {"H": 2, "O": 1}
+        "C2H5OH"     -> {"C": 2, "H": 6, "O": 1}
+        "Ca(OH)2"    -> {"Ca": 1, "O": 2, "H": 2}
+        "Al2(SO4)3"  -> {"Al": 2, "S": 3, "O": 12}
+
+    Raises ValueError on empty input, unknown element symbols, or
+    unbalanced parentheses.
+    """
+    formula = formula.strip()
+    if not formula:
+        raise ValueError("Formula cannot be empty.")
+
+    stack = [dict()]
+    i = 0
+    n = len(formula)
+
+    while i < n:
+        char = formula[i]
+
+        if char == "(":
+            stack.append({})
+            i += 1
+
+        elif char == ")":
+            i += 1
+            start = i
+            while i < n and formula[i].isdigit():
+                i += 1
+            multiplier = int(formula[start:i]) if i > start else 1
+
+            if len(stack) < 2:
+                raise ValueError(f"Unbalanced parentheses in formula '{formula}'.")
+
+            group = stack.pop()
+            for element, count in group.items():
+                stack[-1][element] = stack[-1].get(element, 0) + count * multiplier
+
+        elif char.isupper():
+            start = i
+            i += 1
+            while i < n and formula[i].islower():
+                i += 1
+            element = formula[start:i]
+
+            start_count = i
+            while i < n and formula[i].isdigit():
+                i += 1
+            count = int(formula[start_count:i]) if i > start_count else 1
+
+            if element not in ATOMIC_MASSES:
+                raise ValueError(
+                    f"Unknown element symbol '{element}' in formula '{formula}'."
+                )
+
+            stack[-1][element] = stack[-1].get(element, 0) + count
+
+        else:
+            raise ValueError(
+                f"Unexpected character '{char}' in formula '{formula}'."
+            )
+
+    if len(stack) != 1:
+        raise ValueError(f"Unbalanced parentheses in formula '{formula}'.")
+
+    return stack[0]
+
+
+def molar_mass(formula: str) -> float:
+    """
+    Compute the molar mass (g/mol) of a chemical formula string.
+
+    Example:
+        molar_mass("H2O") -> 18.015
+    """
+    counts = parse_formula(formula)
+    return sum(ATOMIC_MASSES[element] * count for element, count in counts.items())

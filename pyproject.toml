@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atomecon"
+version = "0.1.0"
+description = "Lightweight green chemistry metrics (atom economy, E-factor, yield) from plain chemical formulas - no RDKit, no SMILES."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+    { name = "Your Name", email = "you@example.com" }
+]
+keywords = ["chemistry", "green-chemistry", "atom-economy", "stoichiometry", "e-factor"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Education",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+
+[project.urls]
+Homepage = "https://github.com/YOUR_USERNAME/atomecon"
+Issues = "https://github.com/YOUR_USERNAME/atomecon/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
