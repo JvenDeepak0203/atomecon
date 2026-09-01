@@ -1,4 +1,4 @@
-﻿"""
+"""
 Core Reaction class for green-chemistry metrics.
 
 Design note on atom economy vs. E-factor / yield:
@@ -48,14 +48,19 @@ class Reaction:
                 f"desired_product '{desired_product}' must be a key in `products`."
             )
 
+        # Store exactly what was passed in, so every method can reach it
+        # later via self.reactants / self.products / self.desired_product.
         self.reactants = reactants
         self.products = products
         self.desired_product = desired_product
 
+        # Build a dictionary of molar masses for every reactant.
+        # Long-form version of what used to be a one-line dict comprehension.
         self._reactant_masses = {}
         for formula in reactants:
             self._reactant_masses[formula] = molar_mass(formula)
 
+        # Same idea, for every product.
         self._product_masses = {}
         for formula in products:
             self._product_masses[formula] = molar_mass(formula)
@@ -69,14 +74,26 @@ class Reaction:
                 "for an unbalanced equation."
             )
 
+    # ---------- internal helpers ----------
+
     def _total_atoms(self, compounds: Dict[str, int]) -> Dict[str, int]:
+        """
+        Given a dict like {"H2": 2, "O2": 1}, return the total count of
+        each individual element across all of them, e.g. {"H": 4, "O": 2}.
+        """
         totals: Dict[str, int] = {}
+
+        # Go through each compound on this side of the equation.
         for formula, coeff in compounds.items():
+            # Break that formula down into its elements, e.g. "H2" -> {"H": 2}
             element_counts = parse_formula(formula)
+
+            # Add each element's count (scaled by the coefficient) to the running total.
             for element, count in element_counts.items():
                 if element not in totals:
                     totals[element] = 0
                 totals[element] = totals[element] + count * coeff
+
         return totals
 
     def _check_balanced(self) -> bool:
@@ -84,11 +101,20 @@ class Reaction:
         product_totals = self._total_atoms(self.products)
         return reactant_totals == product_totals
 
+    # ---------- theoretical metrics (no lab data needed) ----------
+
     def atom_economy(self) -> float:
+        """
+        % of total reactant mass that ends up in the desired product,
+        assuming the reaction as written goes to completion.
+        Purely theoretical - based only on the balanced equation.
+        """
+        # mass of the desired product = (molar mass) x (how many the equation makes)
         one_unit_mass = self._product_masses[self.desired_product]
         how_many_made = self.products[self.desired_product]
         desired_mass = one_unit_mass * how_many_made
 
+        # total mass of all reactants combined
         total_reactant_mass = 0
         for formula, coeff in self.reactants.items():
             mass_of_this_reactant = self._reactant_masses[formula] * coeff
@@ -97,6 +123,11 @@ class Reaction:
         return desired_mass / total_reactant_mass * 100
 
     def explain_atom_economy(self) -> str:
+        """
+        Same result as atom_economy(), but returns a step-by-step
+        breakdown of the calculation instead of just the final number.
+        Meant for learning/teaching, not for use in other code.
+        """
         lines = []
         lines.append(f"Atom economy for {self.desired_product}:")
         lines.append("")
@@ -143,9 +174,20 @@ class Reaction:
             text = text + line
         return text
 
+    # ---------- experimental metrics (need real lab data) ----------
+
     def theoretical_yield_g(self, reactant_masses_g: Dict[str, float]) -> float:
+        """
+        Given the actual masses (g) of each reactant you used, find the
+        limiting reagent and compute the maximum possible mass (g) of the
+        desired product the stoichiometry allows.
+        """
         self._validate_reactant_masses(reactant_masses_g)
 
+        # For each reactant: how many "equation-units" worth do we actually have?
+        # (moles available) / (coefficient in the equation)
+        # Whichever reactant gives the SMALLEST ratio is the limiting reagent -
+        # it runs out first and caps how much product can form.
         smallest_ratio_so_far = None
         for formula, coeff in self.reactants.items():
             moles_available = reactant_masses_g[formula] / self._reactant_masses[formula]
@@ -162,16 +204,24 @@ class Reaction:
     def percent_yield(
         self, reactant_masses_g: Dict[str, float], actual_yield_g: float
     ) -> float:
+        """% of the theoretical maximum product mass that was actually obtained."""
         theoretical = self.theoretical_yield_g(reactant_masses_g)
         return actual_yield_g / theoretical * 100
 
     def e_factor(
         self, reactant_masses_g: Dict[str, float], actual_yield_g: float
     ) -> float:
+        """
+        Environmental factor: kg (or g) of waste produced per kg (or g) of
+        product actually isolated. Lower is greener; 0 is ideal (no waste).
+
+            E-factor = (total input mass - actual product mass) / actual product mass
+        """
         self._validate_reactant_masses(reactant_masses_g)
         if actual_yield_g <= 0:
             raise ValueError("actual_yield_g must be positive.")
 
+        # Add up every reactant mass the user actually used.
         total_input_mass = 0
         for mass in reactant_masses_g.values():
             total_input_mass = total_input_mass + mass
@@ -180,6 +230,7 @@ class Reaction:
         return waste / actual_yield_g
 
     def _validate_reactant_masses(self, reactant_masses_g: Dict[str, float]) -> None:
+        """Make sure the user supplied a mass for every reactant in the equation."""
         missing = []
         for formula in self.reactants:
             if formula not in reactant_masses_g:
@@ -193,9 +244,17 @@ class Reaction:
     def green_grade(
         self, reactant_masses_g: Dict[str, float], actual_yield_g: float
     ) -> str:
+        """
+        Combine atom economy and E-factor into a single A-F letter grade,
+        as a quick at-a-glance summary of how "green" this reaction is.
+
+        This is a simple, transparent scoring rule - not a scientific
+        standard - meant to make the two numbers easier to interpret together.
+        """
         ae = self.atom_economy()
         ef = self.e_factor(reactant_masses_g, actual_yield_g)
 
+        # Atom economy: higher is better.
         if ae >= 90:
             ae_points = 4
         elif ae >= 75:
@@ -207,6 +266,7 @@ class Reaction:
         else:
             ae_points = 0
 
+        # E-factor: lower is better (0 = no waste at all).
         if ef <= 0.5:
             ef_points = 4
         elif ef <= 2:
@@ -235,11 +295,17 @@ class Reaction:
             f"{letter}  (Atom economy: {ae:.0f}% | E-factor: {ef:.1f})"
         )
 
+    # ---------- reporting ----------
+
     def summary(
         self,
         reactant_masses_g: Optional[Dict[str, float]] = None,
         actual_yield_g: Optional[float] = None,
     ) -> str:
+        """
+        Human-readable report. Always includes atom economy.
+        Includes yield / E-factor too if experimental data is supplied.
+        """
         lines = [
             f"Reaction: {self._equation_str()}",
             f"Balanced: {self.is_balanced}",
