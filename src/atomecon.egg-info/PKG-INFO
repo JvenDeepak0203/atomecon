@@ -15,9 +15,15 @@ Classifier: Topic :: Scientific/Engineering :: Chemistry
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
 
-# atomecon
+﻿# atomecon
 
 Lightweight green chemistry metrics — atom economy, theoretical yield, percent yield, and E-factor — computed from **plain chemical formulas**. No RDKit, no SMILES, no heavy dependencies.
+
+## Who this is for
+
+- Chemistry students taking green chemistry coursework, tired of redoing molar-mass arithmetic by hand for every reaction
+- Anyone comparing multiple synthesis routes for the same product, who wants to score them programmatically instead of recalculating each one manually
+- Developers who want atom economy without installing RDKit or learning SMILES notation
 
 ## Why this exists
 
@@ -51,7 +57,7 @@ rxn = Reaction(
 )
 
 print(rxn.atom_economy())
-# 74.4  (theoretical - no lab data needed)
+# 75.0  (theoretical - no lab data needed)
 
 theoretical_g = rxn.theoretical_yield_g({"C7H6O3": 5.0, "C4H6O3": 5.0})
 print(theoretical_g)
@@ -67,6 +73,25 @@ print(rxn.summary(
     actual_yield_g=4.2,
 ))
 ```
+
+## Learning mode: see the calculation, not just the answer
+
+Most tools just return a number. `explain_atom_economy()` shows the actual working, step by step — useful if you're learning the concept, not just looking up a value:
+
+```python
+print(rxn.explain_atom_economy())
+```
+
+## Green grade: one number to compare reactions at a glance
+
+`green_grade()` combines atom economy and E-factor into a single A-F letter grade, so you don't have to mentally weigh two separate numbers when comparing reaction routes:
+
+```python
+print(rxn.green_grade({"C7H6O3": 5.0, "C4H6O3": 5.0}, actual_yield_g=4.2))
+# B  (Atom economy: 75% | E-factor: 1.4)
+```
+
+This is a simple, transparent scoring rule (not a scientific standard) — meant purely to make the two metrics easier to interpret together.
 
 ## Formula syntax
 
