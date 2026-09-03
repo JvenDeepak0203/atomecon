@@ -32,13 +32,6 @@ class Reaction:
         desired_product: str,
         allow_unbalanced: bool = False,
     ):
-        """
-        reactants / products: dict of {formula: stoichiometric_coefficient}
-        desired_product: the formula (must be a key in `products`) whose
-                          atom economy / yield you care about.
-        allow_unbalanced: if False (default), raises ValueError when the
-                          equation's atom counts don't balance on both sides.
-        """
         if not reactants:
             raise ValueError("`reactants` cannot be empty.")
         if not products:
@@ -267,6 +260,58 @@ class Reaction:
                 result = result + "\n"
             result = result + line
         return result
+
+    def summary_table(
+        self,
+        reactant_masses_g: Optional[Dict[str, float]] = None,
+        actual_yield_g: Optional[float] = None,
+    ) -> str:
+        rows = []
+        rows.append(("Reaction", self._equation_str()))
+        rows.append(("Balanced", str(self.is_balanced)))
+        rows.append(("Atom economy", f"{self.atom_economy():.1f}%"))
+
+        if reactant_masses_g is not None and actual_yield_g is not None:
+            theoretical = self.theoretical_yield_g(reactant_masses_g)
+            yield_pct = self.percent_yield(reactant_masses_g, actual_yield_g)
+            e_fac = self.e_factor(reactant_masses_g, actual_yield_g)
+            grade = self.green_grade(reactant_masses_g, actual_yield_g)
+
+            rows.append(("Theoretical yield", f"{theoretical:.2f} g"))
+            rows.append(
+                ("Actual yield", f"{actual_yield_g:.2f} g ({yield_pct:.1f}%)")
+            )
+            rows.append(("E-factor", f"{e_fac:.2f}"))
+            rows.append(("Green grade", grade))
+
+        metric_column_width = len("Metric")
+        for metric, value in rows:
+            if len(metric) > metric_column_width:
+                metric_column_width = len(metric)
+
+        value_column_width = len("Value")
+        for metric, value in rows:
+            if len(value) > value_column_width:
+                value_column_width = len(value)
+
+        lines = []
+
+        header = "Metric".ljust(metric_column_width) + " | " + "Value".ljust(value_column_width)
+        lines.append(header)
+
+        separator = ("-" * metric_column_width) + "-+-" + ("-" * value_column_width)
+        lines.append(separator)
+
+        for metric, value in rows:
+            row_text = metric.ljust(metric_column_width) + " | " + value.ljust(value_column_width)
+            lines.append(row_text)
+
+        text = ""
+        for i, line in enumerate(lines):
+            if i > 0:
+                text = text + "\n"
+            text = text + line
+        return text
 
     def _equation_str(self) -> str:
         def side(compounds):

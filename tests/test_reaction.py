@@ -121,6 +121,35 @@ def test_green_grade_contains_both_metrics():
     assert "E-factor" in grade_text
 
 
+def test_summary_table_has_aligned_columns():
+    rxn = Reaction(
+        reactants={"H2": 2, "O2": 1},
+        products={"H2O": 2},
+        desired_product="H2O",
+    )
+    table = rxn.summary_table({"H2": 4.0, "O2": 32.0}, actual_yield_g=36.0)
+    lines = table.split("\n")
+
+    first_length = len(lines[0])
+    for line in lines:
+        assert len(line) == first_length
+
+    assert "Metric" in lines[0]
+    assert "Value" in lines[0]
+    assert "Green grade" in table
+
+
+def test_summary_table_without_lab_data_omits_experimental_rows():
+    rxn = Reaction(
+        reactants={"H2": 2, "O2": 1},
+        products={"H2O": 2},
+        desired_product="H2O",
+    )
+    table = rxn.summary_table()
+    assert "Atom economy" in table
+    assert "E-factor" not in table
+
+
 def test_summary_contains_atom_economy():
     rxn = Reaction(
         reactants={"H2": 2, "O2": 1},
