@@ -1,6 +1,8 @@
 README.md
 pyproject.toml
 src/atomecon/__init__.py
+src/atomecon/balance.py
+src/atomecon/convenience.py
 src/atomecon/elements.py
 src/atomecon/formula.py
 src/atomecon/reaction.py
@@ -9,6 +11,7 @@ src/atomecon.egg-info/PKG-INFO
 src/atomecon.egg-info/SOURCES.txt
 src/atomecon.egg-info/dependency_links.txt
 src/atomecon.egg-info/top_level.txt
+tests/test_balance.py
 tests/test_formula.py
 tests/test_reaction.py
 tests/test_reaction_log.py

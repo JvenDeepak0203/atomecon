@@ -19,12 +19,27 @@ Note: this version deliberately avoids comprehensions / generator expressions
 and writes every loop out the long way, for readability while learning.
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from .formula import parse_formula, molar_mass
+from .balance import balance_equation
 
 
 class Reaction:
+    @classmethod
+    def auto(
+        cls,
+        reactants: List[str],
+        products: List[str],
+        desired_product: str,
+    ) -> "Reaction":
+        """
+        Build a Reaction from just formulas (no coefficients) - the
+        coefficients are worked out automatically so the equation balances.
+        """
+        reactant_coeffs, product_coeffs = balance_equation(reactants, products)
+        return cls(reactant_coeffs, product_coeffs, desired_product)
+
     def __init__(
         self,
         reactants: Dict[str, int],
