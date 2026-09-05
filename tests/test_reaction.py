@@ -159,3 +159,14 @@ def test_summary_contains_atom_economy():
     text = rxn.summary()
     assert "Atom economy" in text
     assert "%" in text
+
+
+def test_equation_method_returns_plain_arrow_string():
+    from atomecon import Reaction
+    rxn = Reaction(
+        reactants={"H2": 2, "O2": 1},
+        products={"H2O": 2},
+        desired_product="H2O",
+    )
+    assert rxn.equation() == "2H2 + O2 -> 2H2O"
+    assert "<Reaction" not in rxn.equation()

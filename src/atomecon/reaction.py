@@ -33,10 +33,6 @@ class Reaction:
         products: List[str],
         desired_product: str,
     ) -> "Reaction":
-        """
-        Build a Reaction from just formulas (no coefficients) - the
-        coefficients are worked out automatically so the equation balances.
-        """
         reactant_coeffs, product_coeffs = balance_equation(reactants, products)
         return cls(reactant_coeffs, product_coeffs, desired_product)
 
@@ -327,6 +323,9 @@ class Reaction:
                 text = text + "\n"
             text = text + line
         return text
+
+    def equation(self) -> str:
+        return self._equation_str()
 
     def _equation_str(self) -> str:
         def side(compounds):

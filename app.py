@@ -74,7 +74,7 @@ if "reaction" in st.session_state:
     st.divider()
     st.subheader("2. Theoretical results")
 
-    st.success(f"Balanced equation: **{rxn}**".replace("<Reaction ", "").replace(">", ""))
+    st.success(f"Balanced equation: **{rxn.equation()}**")
     st.metric("Atom economy", f"{rxn.atom_economy():.1f}%")
 
     with st.expander("See the step-by-step calculation"):
