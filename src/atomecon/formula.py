@@ -1,4 +1,4 @@
-"""
+﻿"""
 Parsing of plain-text chemical formulas (e.g. "C2H5OH", "Ca(OH)2")
 into element counts, and molar mass calculation from those formulas.
 
@@ -25,6 +25,13 @@ def parse_formula(formula: str) -> Dict[str, int]:
     unbalanced parentheses.
     """
     formula = formula.strip()
+    if not formula:
+        raise ValueError("Formula cannot be empty.")
+
+    invisible_characters = ["\u200b", "\u200c", "\u200d", "\ufeff", "\u00a0"]
+    for invisible_char in invisible_characters:
+        formula = formula.replace(invisible_char, "")
+
     if not formula:
         raise ValueError("Formula cannot be empty.")
 
@@ -74,7 +81,10 @@ def parse_formula(formula: str) -> Dict[str, int]:
 
         else:
             raise ValueError(
-                f"Unexpected character '{char}' in formula '{formula}'."
+                f"Unexpected character {char!r} (Unicode code point "
+                f"U+{ord(char):04X}) in formula '{formula}'. If this "
+                "character looks blank or invisible, it may have been "
+                "accidentally pasted in - try retyping the formula."
             )
 
     if len(stack) != 1:

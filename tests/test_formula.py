@@ -1,4 +1,4 @@
-import pytest
+﻿import pytest
 
 from atomecon import parse_formula, molar_mass
 
@@ -16,7 +16,6 @@ def test_formula_no_digits_after_element():
 
 
 def test_condensed_organic_formula():
-    # ethanol written the way a beginner course teaches it
     assert parse_formula("C2H5OH") == {"C": 2, "H": 6, "O": 1}
 
 
@@ -36,6 +35,17 @@ def test_empty_formula_raises():
 def test_unknown_element_raises():
     with pytest.raises(ValueError):
         parse_formula("Xx2O")
+
+
+def test_strips_invisible_zero_width_character():
+    formula_with_invisible_char = "H2O" + "\u200b"
+    assert parse_formula(formula_with_invisible_char) == {"H": 2, "O": 1}
+
+
+def test_unexpected_character_error_shows_unicode_code_point():
+    with pytest.raises(ValueError) as exc_info:
+        parse_formula("H2O@")
+    assert "U+0040" in str(exc_info.value)
 
 
 def test_unbalanced_parentheses_raises():
