@@ -9,7 +9,7 @@ Deploy for free at share.streamlit.io (see README for steps).
 
 import streamlit as st
 
-from atomecon import Reaction
+from atomecon import Reaction, is_formula_plausible
 
 st.set_page_config(page_title="atomecon", page_icon="🧪")
 
@@ -60,6 +60,19 @@ if build_clicked:
     if not reactant_list or not product_list or not desired_clean:
         st.error("Please fill in reactants, products, and the desired product.")
     else:
+        implausible_formulas = []
+        for formula in reactant_list + product_list:
+            if not is_formula_plausible(formula):
+                implausible_formulas.append(formula)
+
+        if implausible_formulas:
+            st.warning(
+                "These formulas look chemically impossible (odd total "
+                f"valence): {', '.join(implausible_formulas)}. Double-check "
+                "for typos - proceeding anyway, but the result may not "
+                "correspond to a real molecule."
+            )
+
         try:
             rxn = Reaction.auto(reactant_list, product_list, desired_clean)
             st.session_state["reaction"] = rxn

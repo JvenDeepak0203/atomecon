@@ -7,6 +7,7 @@ src/atomecon/elements.py
 src/atomecon/formula.py
 src/atomecon/reaction.py
 src/atomecon/reaction_log.py
+src/atomecon/valence.py
 src/atomecon.egg-info/PKG-INFO
 src/atomecon.egg-info/SOURCES.txt
 src/atomecon.egg-info/dependency_links.txt
@@ -15,3 +16,4 @@ tests/test_balance.py
 tests/test_formula.py
 tests/test_reaction.py
 tests/test_reaction_log.py
+tests/test_valence.py

@@ -9,6 +9,7 @@ from .reaction import Reaction
 from .reaction_log import ReactionLog
 from .balance import balance_equation
 from .convenience import analyze
+from .valence import is_formula_plausible, explain_formula_plausibility
 
 __all__ = [
     "parse_formula",
@@ -17,5 +18,7 @@ __all__ = [
     "ReactionLog",
     "balance_equation",
     "analyze",
+    "is_formula_plausible",
+    "explain_formula_plausibility",
 ]
 __version__ = "0.1.0"
