@@ -1,11 +1,11 @@
 Metadata-Version: 2.4
 Name: atomecon
-Version: 0.1.0
+Version: 0.1.1
 Summary: Lightweight green chemistry metrics (atom economy, E-factor, yield) from plain chemical formulas - no RDKit, no SMILES.
-Author-email: Your Name <you@example.com>
+Author-email: Jven Deepak <jven.deepak@gmail.com>
 License: MIT
-Project-URL: Homepage, https://github.com/YOUR_USERNAME/atomecon
-Project-URL: Issues, https://github.com/YOUR_USERNAME/atomecon/issues
+Project-URL: Homepage, https://github.com/JvenDeepak0203/atomecon
+Project-URL: Issues, https://github.com/JvenDeepak0203/atomecon/issues
 Keywords: chemistry,green-chemistry,atom-economy,stoichiometry,e-factor
 Classifier: Programming Language :: Python :: 3
 Classifier: License :: OSI Approved :: MIT License
@@ -14,6 +14,8 @@ Classifier: Intended Audience :: Education
 Classifier: Topic :: Scientific/Engineering :: Chemistry
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
+License-File: LICENSE
+Dynamic: license-file
 
 ﻿# atomecon
 
@@ -35,15 +37,10 @@ Existing chemistry packages either don't cover green chemistry metrics at all (t
 
 **[atomecon.streamlit.app](https://atomecon.streamlit.app/)** - type in a reaction's formulas, get it balanced and analyzed instantly in your browser.
 
-## Install (to use in your own Python code)
+## Install
 
 ```bash
-pip install -e .
-```
-
-Or install directly from this repo:
-```bash
-pip install git+https://github.com/JvenDeepak0203/atomecon.git
+pip install atomecon
 ```
 
 ## Core concepts
@@ -126,15 +123,13 @@ log = ReactionLog()
 log.add("Aspirin route", rxn, reactant_masses_g=masses, actual_yield_g=4.2)
 
 combustion = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
-log.add("Methane combustion", combustion)  # lab data is optional per entry
+log.add("Methane combustion", combustion)
 
 print(log.comparison_table())
 ```
 Builds a table sorted by atom economy (greenest first). `ReactionLog` is in-memory only - it resets each time your program runs.
 
 ## Formula plausibility checking
-
-Before balancing, `atomecon` can flag formulas that are chemically impossible using valence-parity math (every bond connects exactly 2 atoms, so a molecule's total valence must be even):
 
 ```python
 from atomecon import is_formula_plausible
@@ -148,8 +143,6 @@ is_formula_plausible("Fe2O3")   # True  (iron has variable valence - not checked
 
 ## Formula syntax
 
-Supports condensed formulas and nested parentheses:
-
 ```python
 from atomecon import parse_formula, molar_mass
 
@@ -160,25 +153,23 @@ molar_mass("C6H12O6")          # 180.156
 
 ## Reaction balance checking
 
-`Reaction` verifies the equation is atom-balanced on construction and raises a clear error if it isn't (atom economy is not meaningful for an unbalanced equation). Pass `allow_unbalanced=True` to override.
+`Reaction` verifies the equation is atom-balanced on construction and raises a clear error if it isn't. Pass `allow_unbalanced=True` to override.
 
 ## What this library does NOT do (known scope limits)
 
-Being upfront about the boundaries:
 - **Does not verify a formula represents a real molecule** beyond the basic valence-parity check above - no bonding/structure model like RDKit
-- **Does not verify a reaction is chemically real** - if you give it atom-balanced but chemically implausible reactants/products (e.g. a reaction that wouldn't actually occur), it will still calculate metrics for it. Verifying real reaction mechanisms is a much larger problem (closer to quantum chemistry / reaction databases) that's out of scope here.
-- **No charge/ionic support** - formulas are tracked by atoms only, not electric charge, so redox half-reactions and charged species aren't supported
+- **Does not verify a reaction is chemically real** - it will calculate metrics for atom-balanced but chemically implausible reactions
+- **No charge/ionic support** - formulas are tracked by atoms only, not electric charge
 
 ## Try the demo script
 
 ```bash
 python demo.py
 ```
-Runs through every feature of the library end to end.
 
 ## Web app
 
-The `app.py` file is a Streamlit interface to the library - see it live at [atomecon.streamlit.app](https://atomecon.streamlit.app/), or run it yourself:
+Live at [atomecon.streamlit.app](https://atomecon.streamlit.app/), or run it yourself:
 ```bash
 pip install streamlit
 streamlit run app.py

@@ -126,6 +126,6 @@ if "reaction" in st.session_state:
 
 st.divider()
 st.caption(
-    "Built with atomecon - source code on "
+    "Built by Jven Deepak with atomecon - source code on "
     "[GitHub](https://github.com/JvenDeepak0203/atomecon)."
 )
