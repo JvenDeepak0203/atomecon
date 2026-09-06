@@ -1,33 +1,51 @@
 ﻿# atomecon
 
-Lightweight green chemistry metrics — atom economy, theoretical yield, percent yield, and E-factor — computed from **plain chemical formulas**. No RDKit, no SMILES, no heavy dependencies.
+🧪 **[Try it live in your browser](https://atomecon.streamlit.app/)** - no install needed.
+
+Lightweight green chemistry metrics - atom economy, theoretical yield, percent yield, E-factor, and automatic equation balancing - computed from **plain chemical formulas**. No RDKit, no SMILES, no heavy dependencies.
 
 ## Who this is for
 
 - Chemistry students taking green chemistry coursework, tired of redoing molar-mass arithmetic by hand for every reaction
 - Anyone comparing multiple synthesis routes for the same product, who wants to score them programmatically instead of recalculating each one manually
-- Developers who want atom economy without installing RDKit or learning SMILES notation
+- Developers who want atom economy and equation balancing without installing RDKit or learning SMILES notation
 
 ## Why this exists
 
-Existing chemistry packages either don't cover green chemistry metrics at all (they focus on general stoichiometry), or require RDKit and SMILES notation to calculate even a single metric like atom economy. `atomecon` bundles the standard metrics together, takes formulas the way you'd write them in a chemistry class (`"C2H5OH"`, not `"CCO"`), and has zero dependencies.
+Existing chemistry packages either don't cover green chemistry metrics at all (they focus on general stoichiometry), or require RDKit and SMILES notation to calculate even a single metric like atom economy. `atomecon` bundles the standard metrics together, balances equations automatically, takes formulas the way you'd write them in a chemistry class (`"C2H5OH"`, not `"CCO"`), and has zero dependencies.
 
-## Install
+## Try it without installing anything
+
+**[atomecon.streamlit.app](https://atomecon.streamlit.app/)** - type in a reaction's formulas, get it balanced and analyzed instantly in your browser.
+
+## Install (to use in your own Python code)
 
 ```bash
 pip install -e .
 ```
 
-(Once published: `pip install atomecon`)
+Or install directly from this repo:
+```bash
+pip install git+https://github.com/JvenDeepak0203/atomecon.git
+```
 
-## Concepts
+## Core concepts
 
-- **Atom economy** is *theoretical* — it only depends on the balanced equation and molar masses. It's always computable, with no lab data.
-- **Theoretical yield**, **percent yield**, and **E-factor** are *experimental* — they depend on the real masses of reactants you used and the real mass of product you isolated. These vary run to run.
+- **Atom economy** is *theoretical* - it only depends on the balanced equation and molar masses. It's always computable, with no lab data.
+- **Theoretical yield**, **percent yield**, and **E-factor** are *experimental* - they depend on the real masses of reactants you used and the real mass of product you isolated. These vary run to run.
 
 `atomecon` keeps this distinction explicit: `atom_economy()` takes no arguments beyond the reaction itself, while `e_factor()` and `percent_yield()` require you to supply real measured masses.
 
-## Quick start
+## Quick start - the one-line version
+
+```python
+from atomecon import analyze
+
+analyze(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+```
+Balances the equation automatically and prints a full report - no coefficients, no separate method calls needed.
+
+## Full walkthrough
 
 ```python
 from atomecon import Reaction
@@ -42,24 +60,32 @@ rxn = Reaction(
 print(rxn.atom_economy())
 # 75.0  (theoretical - no lab data needed)
 
-theoretical_g = rxn.theoretical_yield_g({"C7H6O3": 5.0, "C4H6O3": 5.0})
-print(theoretical_g)
+masses = {"C7H6O3": 5.0, "C4H6O3": 5.0}
+print(rxn.theoretical_yield_g(masses))
+print(rxn.percent_yield(masses, actual_yield_g=4.2))
+print(rxn.e_factor(masses, actual_yield_g=4.2))
+print(rxn.green_grade(masses, actual_yield_g=4.2))
 
-pct_yield = rxn.percent_yield({"C7H6O3": 5.0, "C4H6O3": 5.0}, actual_yield_g=4.2)
-print(pct_yield)
-
-e_fac = rxn.e_factor({"C7H6O3": 5.0, "C4H6O3": 5.0}, actual_yield_g=4.2)
-print(e_fac)
-
-print(rxn.summary(
-    reactant_masses_g={"C7H6O3": 5.0, "C4H6O3": 5.0},
-    actual_yield_g=4.2,
-))
+print(rxn.summary_table(reactant_masses_g=masses, actual_yield_g=4.2))
 ```
 
-## Learning mode: see the calculation, not just the answer
+## Automatic equation balancing
 
-Most tools just return a number. `explain_atom_economy()` shows the actual working, step by step — useful if you're learning the concept, not just looking up a value:
+Don't want to work out coefficients yourself? Just give formulas:
+
+```python
+from atomecon import Reaction
+
+rxn = Reaction.auto(["N2", "H2"], ["NH3"], desired_product="NH3")
+print(rxn)
+# <Reaction N2 + 3H2 -> 2NH3>
+```
+
+This uses real linear algebra (Gaussian elimination over exact fractions) to solve for the smallest whole-number coefficients - the same process you'd do by hand, automated.
+
+**Known limitation:** a small number of equations have more than one valid balancing ratio (a genuine mathematical ambiguity, not a bug) and will raise a clear error asking you to specify coefficients manually instead of guessing.
+
+## Learning mode: see the calculation, not just the answer
 
 ```python
 print(rxn.explain_atom_economy())
@@ -67,14 +93,41 @@ print(rxn.explain_atom_economy())
 
 ## Green grade: one number to compare reactions at a glance
 
-`green_grade()` combines atom economy and E-factor into a single A-F letter grade, so you don't have to mentally weigh two separate numbers when comparing reaction routes:
-
 ```python
-print(rxn.green_grade({"C7H6O3": 5.0, "C4H6O3": 5.0}, actual_yield_g=4.2))
+print(rxn.green_grade(masses, actual_yield_g=4.2))
 # B  (Atom economy: 75% | E-factor: 1.4)
 ```
 
-This is a simple, transparent scoring rule (not a scientific standard) — meant purely to make the two metrics easier to interpret together.
+A simple, transparent scoring rule (not a scientific standard) - combines atom economy and E-factor into a single A-F grade.
+
+## Comparing multiple reactions
+
+```python
+from atomecon import Reaction, ReactionLog
+
+log = ReactionLog()
+log.add("Aspirin route", rxn, reactant_masses_g=masses, actual_yield_g=4.2)
+
+combustion = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+log.add("Methane combustion", combustion)  # lab data is optional per entry
+
+print(log.comparison_table())
+```
+Builds a table sorted by atom economy (greenest first). `ReactionLog` is in-memory only - it resets each time your program runs.
+
+## Formula plausibility checking
+
+Before balancing, `atomecon` can flag formulas that are chemically impossible using valence-parity math (every bond connects exactly 2 atoms, so a molecule's total valence must be even):
+
+```python
+from atomecon import is_formula_plausible
+
+is_formula_plausible("C8H18")   # True  (real octane)
+is_formula_plausible("C8H23")   # False (impossible - odd total valence)
+is_formula_plausible("Fe2O3")   # True  (iron has variable valence - not checked, benefit of the doubt)
+```
+
+**Important limitation:** this can only rule out formulas as impossible - it cannot prove a formula is real, and it deliberately skips elements with variable real-world valence (iron, sulfur, phosphorus, nitrogen, most transition metals) rather than risk a wrong answer. This is a long way from full molecular validity checking (which is what RDKit does using real molecular structure) - it's one useful mathematical shortcut, not a replacement for it.
 
 ## Formula syntax
 
@@ -83,14 +136,36 @@ Supports condensed formulas and nested parentheses:
 ```python
 from atomecon import parse_formula, molar_mass
 
-parse_formula("Ca(OH)2")     # {"Ca": 1, "O": 2, "H": 2}
-parse_formula("Al2(SO4)3")   # {"Al": 2, "S": 3, "O": 12}
-molar_mass("C6H12O6")        # 180.156
+parse_formula("Ca(OH)2")       # {"Ca": 1, "O": 2, "H": 2}
+parse_formula("Fe3(Fe(CN)6)2") # {"Fe": 5, "C": 12, "N": 12}
+molar_mass("C6H12O6")          # 180.156
 ```
 
 ## Reaction balance checking
 
 `Reaction` verifies the equation is atom-balanced on construction and raises a clear error if it isn't (atom economy is not meaningful for an unbalanced equation). Pass `allow_unbalanced=True` to override.
+
+## What this library does NOT do (known scope limits)
+
+Being upfront about the boundaries:
+- **Does not verify a formula represents a real molecule** beyond the basic valence-parity check above - no bonding/structure model like RDKit
+- **Does not verify a reaction is chemically real** - if you give it atom-balanced but chemically implausible reactants/products (e.g. a reaction that wouldn't actually occur), it will still calculate metrics for it. Verifying real reaction mechanisms is a much larger problem (closer to quantum chemistry / reaction databases) that's out of scope here.
+- **No charge/ionic support** - formulas are tracked by atoms only, not electric charge, so redox half-reactions and charged species aren't supported
+
+## Try the demo script
+
+```bash
+python demo.py
+```
+Runs through every feature of the library end to end.
+
+## Web app
+
+The `app.py` file is a Streamlit interface to the library - see it live at [atomecon.streamlit.app](https://atomecon.streamlit.app/), or run it yourself:
+```bash
+pip install streamlit
+streamlit run app.py
+```
 
 ## Running tests
 
