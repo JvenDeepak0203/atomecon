@@ -122,3 +122,53 @@ def test_atom_economy_column_is_right_aligned():
     for line in lines[2:]:
         percent_positions.append(line.index("%"))
     assert len(set(percent_positions)) == 1
+
+
+def test_to_records_returns_sorted_structured_data():
+    log = ReactionLog()
+    low = Reaction(
+        reactants={"CH4": 1, "O2": 2},
+        products={"CO2": 1, "H2O": 2},
+        desired_product="CO2",
+    )
+    high = Reaction(
+        reactants={"H2": 2, "O2": 1},
+        products={"H2O": 2},
+        desired_product="H2O",
+    )
+    log.add("Combustion", low)
+    log.add("Water", high)
+
+    records = log.to_records()
+    assert [r["name"] for r in records] == ["Water", "Combustion"]
+    assert isinstance(records[0]["atom_economy"], float)
+
+
+def test_to_records_marks_missing_lab_data_as_none():
+    log = ReactionLog()
+    rxn = Reaction(
+        reactants={"H2": 2, "O2": 1},
+        products={"H2O": 2},
+        desired_product="H2O",
+    )
+    log.add("No data", rxn)
+
+    record = log.to_records()[0]
+    assert record["has_lab_data"] is False
+    assert record["grade_letter"] is None
+    assert record["e_factor"] is None
+    assert record["percent_yield"] is None
+
+
+def test_to_records_extracts_the_grade_letter():
+    log = ReactionLog()
+    rxn = Reaction(
+        reactants={"H2": 2, "O2": 1},
+        products={"H2O": 2},
+        desired_product="H2O",
+    )
+    log.add("Water", rxn, reactant_masses_g={"H2": 4.0, "O2": 32.0}, actual_yield_g=36.0)
+
+    record = log.to_records()[0]
+    assert record["grade_letter"] == "A"
+    assert record["e_factor"] == pytest.approx(0.0, abs=0.01)

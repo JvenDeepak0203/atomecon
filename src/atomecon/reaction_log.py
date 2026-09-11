@@ -32,30 +32,44 @@ class ReactionLog:
         }
         self._entries.append(entry)
 
-    def comparison_table(self) -> str:
-        if not self._entries:
-            return "No reactions added yet. Use log.add(name, reaction) first."
+    def to_records(self):
+        """Return the log as plain data, sorted greenest first.
 
+        This separates the numbers from the way they are printed, so a
+        caller can render them however they like - a terminal table, a
+        spreadsheet, a web page - instead of being stuck with the ASCII
+        layout that comparison_table() produces.
+        """
         rows = []
         for entry in self._entries:
-            name = entry["name"]
             reaction = entry["reaction"]
             reactant_masses_g = entry["reactant_masses_g"]
             actual_yield_g = entry["actual_yield_g"]
 
-            ae = reaction.atom_economy()
-
             has_lab_data = reactant_masses_g is not None and actual_yield_g is not None
+
             if has_lab_data:
                 grade = reaction.green_grade(reactant_masses_g, actual_yield_g)
+                # green_grade() returns e.g. "B  (Atom economy: 75% | ...)",
+                # so the letter is the first whitespace-separated piece.
+                grade_letter = grade.split()[0]
+                e_factor = reaction.e_factor(reactant_masses_g, actual_yield_g)
+                percent_yield = reaction.percent_yield(reactant_masses_g, actual_yield_g)
             else:
                 grade = "(no lab data)"
+                grade_letter = None
+                e_factor = None
+                percent_yield = None
 
             rows.append({
-                "name": name,
+                "name": entry["name"],
                 "equation": reaction._equation_str(),
-                "atom_economy": ae,
+                "atom_economy": reaction.atom_economy(),
                 "grade": grade,
+                "grade_letter": grade_letter,
+                "e_factor": e_factor,
+                "percent_yield": percent_yield,
+                "has_lab_data": has_lab_data,
             })
 
         n = len(rows)
@@ -65,6 +79,14 @@ class ReactionLog:
                     temp = rows[j]
                     rows[j] = rows[j + 1]
                     rows[j + 1] = temp
+
+        return rows
+
+    def comparison_table(self) -> str:
+        if not self._entries:
+            return "No reactions added yet. Use log.add(name, reaction) first."
+
+        rows = self.to_records()
 
         # Fixed / minimum column widths so the table keeps the same shape
         # as rows are added and removed, instead of resizing every time.

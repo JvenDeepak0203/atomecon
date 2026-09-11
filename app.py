@@ -7,6 +7,7 @@ Run locally with:
 Deploy for free at share.streamlit.io (see README for steps).
 """
 
+import pandas as pd
 import streamlit as st
 
 from atomecon import Reaction, ReactionLog, is_formula_plausible
@@ -222,11 +223,46 @@ if st.session_state["saved"]:
             actual_yield_g=entry["actual_yield_g"],
         )
 
-    st.code(log.comparison_table())
-    st.caption(
-        f"{len(log)} reaction(s), greenest first. This list lives in your "
-        "browser session only - refreshing the page clears it."
+    table_rows = []
+    for record in log.to_records():
+        table_rows.append({
+            "Name": record["name"],
+            "Reaction": record["equation"],
+            "Atom economy": record["atom_economy"],
+            "Grade": record["grade_letter"] if record["grade_letter"] else "-",
+            "E-factor": record["e_factor"],
+            "Yield": record["percent_yield"],
+        })
+
+    comparison_df = pd.DataFrame(table_rows)
+
+    st.dataframe(
+        comparison_df,
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "Atom economy": st.column_config.NumberColumn(format="%.1f%%"),
+            "E-factor": st.column_config.NumberColumn(format="%.2f"),
+            "Yield": st.column_config.NumberColumn(format="%.1f%%"),
+        },
     )
+
+    st.caption(
+        f"{len(log)} reaction(s), greenest first. Blank cells mean no lab "
+        "data was saved for that reaction. This list lives in your browser "
+        "session only - refreshing the page clears it, so download it if "
+        "you want to keep it."
+    )
+
+    st.download_button(
+        "Download as CSV",
+        comparison_df.to_csv(index=False),
+        file_name="reaction_comparison.csv",
+        mime="text/csv",
+    )
+
+    with st.expander("Plain text version (for copying into a report)"):
+        st.code(log.comparison_table())
 
     with st.expander("Remove individual reactions"):
         st.caption(
