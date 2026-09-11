@@ -170,3 +170,42 @@ def test_equation_method_returns_plain_arrow_string():
     )
     assert rxn.equation() == "2H2 + O2 -> 2H2O"
     assert "<Reaction" not in rxn.equation()
+
+
+def test_yield_exceeding_reactant_mass_is_rejected():
+    """The bug found in the web app: 3 g in, 40 g out is impossible."""
+    rxn = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+    masses = {"CH4": 1.0, "O2": 2.0}
+
+    with pytest.raises(ValueError, match="conservation of mass"):
+        rxn.e_factor(masses, actual_yield_g=40.0)
+
+    with pytest.raises(ValueError, match="conservation of mass"):
+        rxn.percent_yield(masses, actual_yield_g=40.0)
+
+
+def test_impossible_yield_cannot_earn_a_green_grade():
+    rxn = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+    with pytest.raises(ValueError):
+        rxn.green_grade({"CH4": 1.0, "O2": 2.0}, actual_yield_g=40.0)
+
+
+def test_e_factor_never_negative_for_valid_input():
+    rxn = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+    masses = {"CH4": 1.0, "O2": 2.0}
+    assert rxn.e_factor(masses, actual_yield_g=1.0) >= 0
+
+
+def test_yield_exactly_equal_to_input_mass_is_allowed():
+    rxn = Reaction(
+        reactants={"H2": 2, "O2": 1},
+        products={"H2O": 2},
+        desired_product="H2O",
+    )
+    assert rxn.e_factor({"H2": 4.0, "O2": 32.0}, actual_yield_g=36.0) == pytest.approx(0.0, abs=0.01)
+
+
+def test_limiting_reactant_identifies_the_scarce_one():
+    rxn = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+    assert rxn.limiting_reactant({"CH4": 1.0, "O2": 2.0}) == "O2"
+    assert rxn.limiting_reactant({"CH4": 0.01, "O2": 100.0}) == "CH4"

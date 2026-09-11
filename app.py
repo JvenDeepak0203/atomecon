@@ -1,4 +1,4 @@
-﻿"""
+"""
 Streamlit web app for atomecon.
 
 Run locally with:
@@ -10,6 +10,11 @@ Deploy for free at share.streamlit.io (see README for steps).
 import streamlit as st
 
 from atomecon import Reaction, is_formula_plausible
+
+# Slider bounds for reactant masses, in grams.
+MIN_REACTANT_G = 0.1
+MAX_REACTANT_G = 100.0
+MASS_STEP_G = 0.1
 
 st.set_page_config(page_title="atomecon", page_icon="🧪")
 
@@ -77,6 +82,8 @@ if build_clicked:
             rxn = Reaction.auto(reactant_list, product_list, desired_clean)
             st.session_state["reaction"] = rxn
             st.session_state["reactant_list"] = reactant_list
+            # New reaction means the old yield figure is meaningless.
+            st.session_state.pop("actual_yield", None)
         except ValueError as e:
             st.error(str(e))
             st.session_state.pop("reaction", None)
@@ -96,33 +103,66 @@ if "reaction" in st.session_state:
     st.divider()
     st.subheader("3. Optional: add real lab data")
     st.caption(
-        "Atom economy above needs no lab data. Fill this in only if you "
+        "Atom economy above needs no lab data. Drag these only if you "
         "actually ran the reaction and want E-factor / yield too."
     )
 
+    # --- Reactant masses -------------------------------------------------
     reactant_masses = {}
     for formula in st.session_state["reactant_list"]:
-        mass = st.number_input(
-            f"Grams of {formula} used", min_value=0.0, value=0.0, key=f"mass_{formula}"
+        reactant_masses[formula] = st.slider(
+            f"Grams of {formula} used",
+            min_value=MIN_REACTANT_G,
+            max_value=MAX_REACTANT_G,
+            value=1.0,
+            step=MASS_STEP_G,
+            key=f"mass_{formula}",
         )
-        reactant_masses[formula] = mass
 
-    actual_yield = st.number_input(
-        f"Grams of {rxn.desired_product} actually obtained", min_value=0.0, value=0.0
+    # --- The ceiling, recomputed from whatever the sliders now say -------
+    theoretical = rxn.theoretical_yield_g(reactant_masses)
+    limiting = rxn.limiting_reactant(reactant_masses)
+
+    # Never let the max collapse to zero, or the slider becomes invalid.
+    max_yield = round(theoretical, 2)
+    if max_yield < 0.01:
+        max_yield = 0.01
+
+    # If the reactant sliders moved down, an older yield value may now sit
+    # above the new ceiling. Pull it back before drawing the slider.
+    if st.session_state.get("actual_yield", 0.0) > max_yield:
+        st.session_state["actual_yield"] = max_yield
+
+    st.slider(
+        f"Grams of {rxn.desired_product} actually obtained",
+        min_value=0.0,
+        max_value=max_yield,
+        step=0.01,
+        key="actual_yield",
+    )
+    actual_yield = st.session_state["actual_yield"]
+
+    st.caption(
+        f"Capped at {max_yield:.2f} g - the theoretical maximum. **{limiting}** "
+        "runs out first, so it sets the ceiling. You cannot isolate more "
+        "product than the atoms you started with can build."
     )
 
-    if st.button("Calculate experimental metrics"):
-        all_masses_given = True
-        for mass in reactant_masses.values():
-            if mass <= 0:
-                all_masses_given = False
+    # --- Live report -----------------------------------------------------
+    if actual_yield <= 0:
+        st.info(
+            "Drag the yield slider above 0 to see E-factor, percent yield, "
+            "and the green grade."
+        )
+    else:
+        st.divider()
+        st.subheader("4. Full report")
 
-        if not all_masses_given or actual_yield <= 0:
-            st.error("Please enter a positive mass for every reactant and the actual yield.")
-        else:
-            st.divider()
-            st.subheader("4. Full report")
-            st.code(rxn.summary_table(reactant_masses, actual_yield))
+        col_a, col_b = st.columns(2)
+        col_a.metric("Percent yield", f"{rxn.percent_yield(reactant_masses, actual_yield):.1f}%")
+        col_b.metric("E-factor", f"{rxn.e_factor(reactant_masses, actual_yield):.2f}")
+
+        st.code(rxn.summary_table(reactant_masses, actual_yield))
 
 st.divider()
 st.caption(

@@ -163,18 +163,33 @@ class Reaction:
         product_moles = limiting_ratio * self.products[self.desired_product]
         return product_moles * self._product_masses[self.desired_product]
 
+    def limiting_reactant(self, reactant_masses_g: Dict[str, float]) -> str:
+        """Return the reactant that runs out first and caps the yield."""
+        self._validate_reactant_masses(reactant_masses_g)
+
+        smallest_ratio_so_far = None
+        limiting_formula = None
+        for formula, coeff in self.reactants.items():
+            moles_available = reactant_masses_g[formula] / self._reactant_masses[formula]
+            ratio = moles_available / coeff
+
+            if smallest_ratio_so_far is None or ratio < smallest_ratio_so_far:
+                smallest_ratio_so_far = ratio
+                limiting_formula = formula
+
+        return limiting_formula
+
     def percent_yield(
         self, reactant_masses_g: Dict[str, float], actual_yield_g: float
     ) -> float:
+        self._validate_actual_yield(reactant_masses_g, actual_yield_g)
         theoretical = self.theoretical_yield_g(reactant_masses_g)
         return actual_yield_g / theoretical * 100
 
     def e_factor(
         self, reactant_masses_g: Dict[str, float], actual_yield_g: float
     ) -> float:
-        self._validate_reactant_masses(reactant_masses_g)
-        if actual_yield_g <= 0:
-            raise ValueError("actual_yield_g must be positive.")
+        self._validate_actual_yield(reactant_masses_g, actual_yield_g)
 
         total_input_mass = 0
         for mass in reactant_masses_g.values():
@@ -192,6 +207,36 @@ class Reaction:
         if missing:
             raise ValueError(
                 f"reactant_masses_g is missing entries for: {sorted(missing)}"
+            )
+
+    def _validate_actual_yield(
+        self, reactant_masses_g: Dict[str, float], actual_yield_g: float
+    ) -> None:
+        """Reject yields that break conservation of mass.
+
+        You cannot isolate more product than the total mass you put in -
+        atoms do not appear from nowhere. Without this check, an impossible
+        actual yield produces a NEGATIVE E-factor (negative waste), which
+        then scores as an excellent green grade. That is nonsense, so we
+        refuse to compute it rather than report a confident wrong number.
+        """
+        self._validate_reactant_masses(reactant_masses_g)
+
+        if actual_yield_g <= 0:
+            raise ValueError("actual_yield_g must be positive.")
+
+        total_input_mass = 0
+        for mass in reactant_masses_g.values():
+            total_input_mass = total_input_mass + mass
+
+        # Small tolerance so exact-equality cases survive float rounding.
+        if actual_yield_g > total_input_mass + 1e-9:
+            raise ValueError(
+                f"actual_yield_g ({actual_yield_g:.2f} g) is greater than the "
+                f"total mass of reactants used ({total_input_mass:.2f} g). "
+                "That breaks conservation of mass - the product cannot weigh "
+                "more than everything that went into it. Check your units and "
+                "your measurements."
             )
 
     def green_grade(
