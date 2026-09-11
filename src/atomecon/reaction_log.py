@@ -66,19 +66,26 @@ class ReactionLog:
                     rows[j] = rows[j + 1]
                     rows[j + 1] = temp
 
-        name_width = len("Name")
-        equation_width = len("Reaction")
-        ae_width = len("Atom Economy")
-        grade_width = len("Grade")
+        # Fixed / minimum column widths so the table keeps the same shape
+        # as rows are added and removed, instead of resizing every time.
+        # Names are user-typed and can be any length, so that column is
+        # truly fixed and long names are truncated. The others have a
+        # sensible minimum and only grow if the content genuinely needs it.
+        NAME_WIDTH = 24
+        MIN_EQUATION_WIDTH = 26
+        AE_WIDTH = len("Atom Economy")
+        MIN_GRADE_WIDTH = 40
+
+        name_width = NAME_WIDTH
+        equation_width = MIN_EQUATION_WIDTH
+        ae_width = AE_WIDTH
+        grade_width = MIN_GRADE_WIDTH
 
         for row in rows:
             if len(row["name"]) > name_width:
-                name_width = len(row["name"])
+                row["name"] = row["name"][: name_width - 1] + "\u2026"
             if len(row["equation"]) > equation_width:
                 equation_width = len(row["equation"])
-            ae_text = f"{row['atom_economy']:.1f}%"
-            if len(ae_text) > ae_width:
-                ae_width = len(ae_text)
             if len(row["grade"]) > grade_width:
                 grade_width = len(row["grade"])
 
@@ -87,7 +94,7 @@ class ReactionLog:
         header = (
             "Name".ljust(name_width) + " | "
             + "Reaction".ljust(equation_width) + " | "
-            + "Atom Economy".ljust(ae_width) + " | "
+            + "Atom Economy".rjust(ae_width) + " | "
             + "Grade".ljust(grade_width)
         )
         lines.append(header)
@@ -105,7 +112,7 @@ class ReactionLog:
             row_text = (
                 row["name"].ljust(name_width) + " | "
                 + row["equation"].ljust(equation_width) + " | "
-                + ae_text.ljust(ae_width) + " | "
+                + ae_text.rjust(ae_width) + " | "
                 + row["grade"].ljust(grade_width)
             )
             lines.append(row_text)

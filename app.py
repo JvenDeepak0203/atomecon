@@ -88,6 +88,9 @@ if build_clicked:
             st.session_state["reactant_list"] = reactant_list
             # New reaction means the old yield figure is meaningless.
             st.session_state.pop("actual_yield", None)
+            # ...and so is the old name, or you save one reaction under
+            # another reaction's label.
+            st.session_state.pop("save_name", None)
         except ValueError as e:
             st.error(str(e))
             st.session_state.pop("reaction", None)
@@ -225,15 +228,23 @@ if st.session_state["saved"]:
         "browser session only - refreshing the page clears it."
     )
 
-    col_undo, col_clear = st.columns(2)
-    with col_undo:
-        if st.button("Remove last"):
-            st.session_state["saved"].pop()
-            st.rerun()
-    with col_clear:
-        if st.button("Clear all"):
-            st.session_state["saved"] = []
-            st.rerun()
+    with st.expander("Remove individual reactions"):
+        st.caption(
+            "Listed in the order you saved them, which is not the order of "
+            "the table above (that one is sorted greenest first)."
+        )
+        for position, entry in enumerate(st.session_state["saved"]):
+            col_label, col_button = st.columns([4, 1])
+            col_label.write(
+                f"**{entry['name']}** - {entry['reaction'].equation()}"
+            )
+            if col_button.button("Remove", key=f"remove_{position}"):
+                st.session_state["saved"].pop(position)
+                st.rerun()
+
+    if st.button("Clear all"):
+        st.session_state["saved"] = []
+        st.rerun()
 
 st.divider()
 st.caption(
