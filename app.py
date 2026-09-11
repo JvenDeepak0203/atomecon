@@ -9,7 +9,7 @@ Deploy for free at share.streamlit.io (see README for steps).
 
 import streamlit as st
 
-from atomecon import Reaction, is_formula_plausible
+from atomecon import Reaction, ReactionLog, is_formula_plausible
 
 # Slider bounds for reactant masses, in grams.
 MIN_REACTANT_G = 0.1
@@ -23,6 +23,10 @@ st.caption(
     "Green chemistry metrics from plain chemical formulas - "
     "no RDKit, no SMILES needed."
 )
+
+# Saved reactions live here for the length of the browser session.
+if "saved" not in st.session_state:
+    st.session_state["saved"] = []
 
 st.divider()
 
@@ -149,7 +153,9 @@ if "reaction" in st.session_state:
     )
 
     # --- Live report -----------------------------------------------------
-    if actual_yield <= 0:
+    has_lab_data = actual_yield > 0
+
+    if not has_lab_data:
         st.info(
             "Drag the yield slider above 0 to see E-factor, percent yield, "
             "and the green grade."
@@ -163,6 +169,71 @@ if "reaction" in st.session_state:
         col_b.metric("E-factor", f"{rxn.e_factor(reactant_masses, actual_yield):.2f}")
 
         st.code(rxn.summary_table(reactant_masses, actual_yield))
+
+    # --- Save to the comparison log --------------------------------------
+    st.divider()
+    st.subheader("5. Save this reaction to compare")
+    st.caption(
+        "Atom economy is fixed by the equation, so a wasteful route stays "
+        "wasteful no matter how carefully you run it. Save a few routes "
+        "here to see which one is actually worth doing."
+    )
+
+    save_name = st.text_input(
+        "Give this reaction a name",
+        value=rxn.equation(),
+        key="save_name",
+    )
+
+    if st.button("Save to comparison"):
+        cleaned_name = save_name.strip()
+        if not cleaned_name:
+            st.error("Please give the reaction a name before saving.")
+        else:
+            entry = {
+                "name": cleaned_name,
+                "reaction": rxn,
+                "reactant_masses_g": dict(reactant_masses) if has_lab_data else None,
+                "actual_yield_g": actual_yield if has_lab_data else None,
+            }
+            st.session_state["saved"].append(entry)
+            if has_lab_data:
+                st.success(f"Saved '{cleaned_name}' with lab data.")
+            else:
+                st.success(
+                    f"Saved '{cleaned_name}'. No lab data, so it will show "
+                    "atom economy but no grade."
+                )
+
+# --- The comparison table, shown whenever anything is saved --------------
+if st.session_state["saved"]:
+    st.divider()
+    st.subheader("6. Comparison")
+
+    log = ReactionLog()
+    for entry in st.session_state["saved"]:
+        log.add(
+            entry["name"],
+            entry["reaction"],
+            reactant_masses_g=entry["reactant_masses_g"],
+            actual_yield_g=entry["actual_yield_g"],
+        )
+
+    st.code(log.comparison_table())
+    st.caption(
+        f"{len(log)} reaction(s), greenest first. This list lives in your "
+        "browser session only - refreshing the page clears it."
+    )
+
+    col_undo, col_clear = st.columns(2)
+    with col_undo:
+        if st.button("Remove last"):
+            st.session_state["saved"].pop()
+            st.rerun()
+    with col_clear:
+        if st.button("Clear all"):
+            st.session_state["saved"] = []
+            st.rerun()
 
 st.divider()
 st.caption(
