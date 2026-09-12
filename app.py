@@ -7,6 +7,8 @@ Run locally with:
 Deploy for free at share.streamlit.io (see README for steps).
 """
 
+import html
+
 import pandas as pd
 import streamlit as st
 
@@ -200,7 +202,7 @@ if "reaction" in st.session_state:
         parts = rxn.atom_economy_breakdown()
         target = to_subscripts(parts["desired_product"])
 
-        st.markdown(f"**Step 1 — the product you want: {target}**")
+        st.markdown(f"**Step 1: the product you want ({target})**")
         st.markdown(
             f"One unit weighs **{parts['desired_molar_mass']:.2f} g/mol**, and "
             f"the balanced equation makes **{parts['desired_coefficient']}** of "
@@ -215,7 +217,7 @@ if "reaction" in st.session_state:
             )
         )
 
-        st.markdown("**Step 2 — everything you put in**")
+        st.markdown("**Step 2: everything you put in**")
         breakdown_rows = []
         for row in parts["reactants"]:
             breakdown_rows.append({
@@ -237,7 +239,7 @@ if "reaction" in st.session_state:
             f"Total mass of reactants: **{parts['total_reactant_mass']:.2f} g**"
         )
 
-        st.markdown("**Step 3 — the ratio**")
+        st.markdown("**Step 3: the ratio**")
         st.latex(
             r"\frac{%.2f}{%.2f} \times 100 = %.1f\%%"
             % (
@@ -251,7 +253,7 @@ if "reaction" in st.session_state:
             "you did not want."
         )
 
-        st.markdown("**Plain text** — use the copy icon in the corner:")
+        st.markdown("**Plain text.** Use the copy icon in the corner:")
         st.code(rxn.explain_atom_economy(), language=None)
 
     st.divider()
@@ -322,12 +324,20 @@ if "reaction" in st.session_state:
             f"{rxn.excess_e_factor(reactant_masses, actual_yield):.2f}",
         )
 
-        st.caption(
-            f"This equation forces an E-factor of at least "
-            f"**{rxn.e_factor_floor():.2f}** - that waste is unavoidable no "
-            "matter how well you run it. Everything above that is avoidable, "
-            "and that is the part the grade scores you on."
-        )
+        floor = rxn.e_factor_floor()
+        if floor < 0.005:
+            st.caption(
+                "Every atom in this equation can end up in your product, so "
+                "nothing is wasted by design. That means all of the E-factor "
+                "above is avoidable, and the grade holds you to that."
+            )
+        else:
+            st.caption(
+                f"This equation cannot do better than an E-factor of "
+                f"**{floor:.2f}**. That much leaves as by-product however well "
+                "you run it. Anything above the floor is waste you could have "
+                "avoided, and that is the part the grade scores."
+            )
 
         st.code(rxn.summary_table(reactant_masses, actual_yield))
 
@@ -383,40 +393,72 @@ if st.session_state["saved"]:
             actual_yield_g=entry["actual_yield_g"],
         )
 
-    table_rows = []
+    display_rows = []
     for record in log.to_records():
-        table_rows.append({
+        display_rows.append({
             "Name": record["name"],
             "Reaction": record["equation_pretty"],
-            "Atom economy": record["atom_economy"],
-            "Grade": record["grade_letter"] if record["grade_letter"] else "-",
-            "E-factor": record["e_factor"],
-            "Yield": record["percent_yield"],
+            "Atom economy": f"{record['atom_economy']:.1f}%",
+            "Grade": record["grade_letter"] if record["grade_letter"] else "",
+            "E-factor": "" if record["e_factor"] is None else f"{record['e_factor']:.2f}",
+            "Yield": "" if record["percent_yield"] is None else f"{record['percent_yield']:.1f}%",
         })
 
-    comparison_df = pd.DataFrame(table_rows)
+    # Built by hand rather than with st.dataframe because that widget gives
+    # no control over column alignment. Names are user-typed, so every cell
+    # is escaped before it reaches the page.
+    table_css = """
+    <style>
+    .atomecon-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    .atomecon-table th, .atomecon-table td {
+        padding: 0.45rem 0.6rem;
+        text-align: center;
+        border-bottom: 1px solid rgba(140, 140, 140, 0.28);
+    }
+    .atomecon-table th {
+        font-weight: 600;
+        border-bottom: 2px solid rgba(140, 140, 140, 0.5);
+    }
+    .atomecon-table td.left, .atomecon-table th.left { text-align: left; }
+    </style>
+    """
 
-    st.dataframe(
-        comparison_df,
-        hide_index=True,
-        use_container_width=True,
-        column_config={
-            "Atom economy": st.column_config.NumberColumn(format="%.1f%%"),
-            "E-factor": st.column_config.NumberColumn(format="%.2f"),
-            "Yield": st.column_config.NumberColumn(format="%.1f%%"),
-        },
+    table_parts = ["<table class='atomecon-table'><thead><tr>"]
+    table_parts.append(
+        "<th class='left'>Name</th><th class='left'>Reaction</th>"
+        "<th>Atom economy</th><th>Grade</th><th>E-factor</th><th>Yield</th>"
     )
+    table_parts.append("</tr></thead><tbody>")
+    for row in display_rows:
+        table_parts.append(
+            "<tr>"
+            f"<td class='left'>{html.escape(row['Name'])}</td>"
+            f"<td class='left'>{html.escape(row['Reaction'])}</td>"
+            f"<td>{row['Atom economy']}</td>"
+            f"<td>{html.escape(row['Grade'])}</td>"
+            f"<td>{row['E-factor']}</td>"
+            f"<td>{row['Yield']}</td>"
+            "</tr>"
+        )
+    table_parts.append("</tbody></table>")
+
+    st.markdown(table_css + "".join(table_parts), unsafe_allow_html=True)
 
     st.caption(
         f"{len(log)} reaction(s), greenest first. Blank cells mean no lab "
         "data was saved for that reaction. This list lives in your browser "
-        "session only - refreshing the page clears it, so download it if "
-        "you want to keep it."
+        "session only, so refreshing the page clears it. Download it if you "
+        "want to keep it."
     )
+
+    # utf-8-sig writes a byte-order mark, which is what tells Excel on
+    # Windows to read the file as UTF-8. Without it the subscripts and the
+    # arrow arrive as mojibake.
+    csv_bytes = pd.DataFrame(display_rows).to_csv(index=False).encode("utf-8-sig")
 
     st.download_button(
         "Download as CSV",
-        comparison_df.to_csv(index=False),
+        csv_bytes,
         file_name="reaction_comparison.csv",
         mime="text/csv",
     )
