@@ -239,11 +239,61 @@ class Reaction:
                 "your measurements."
             )
 
+    def e_factor_floor(self) -> float:
+        """The lowest E-factor this reaction could ever achieve.
+
+        Even a flawless run - exact stoichiometry, 100% yield, nothing
+        spilled - still throws away every atom that ends up in the other
+        products. That unavoidable waste is fixed by the balanced equation,
+        so it follows directly from atom economy:
+
+            E-factor floor = 100 / atom economy - 1
+
+        A reaction at 100% atom economy has a floor of 0. One at 50% has a
+        floor of 1.0, meaning a gram of waste per gram of product no matter
+        how well it is run.
+        """
+        return 100.0 / self.atom_economy() - 1.0
+
+    def excess_e_factor(
+        self, reactant_masses_g: Dict[str, float], actual_yield_g: float
+    ) -> float:
+        """Waste beyond the unavoidable minimum - i.e. the avoidable waste.
+
+        This is the part that actually reflects how the reaction was run
+        (excess reagents, incomplete conversion, losses) rather than which
+        reaction was chosen. Zero means the run was as clean as this
+        equation permits.
+        """
+        measured = self.e_factor(reactant_masses_g, actual_yield_g)
+        excess = measured - self.e_factor_floor()
+        # Guard against tiny negative values from float rounding.
+        if excess < 0:
+            excess = 0.0
+        return excess
+
     def green_grade(
         self, reactant_masses_g: Dict[str, float], actual_yield_g: float
     ) -> str:
+        """An A-F grade combining route choice and execution.
+
+        Two deliberately separate halves:
+
+          - Atom economy scores the REACTION you picked. Fixed by the
+            equation; no lab technique changes it.
+          - Excess E-factor scores HOW YOU RAN IT, measured against the
+            best that reaction allows rather than against an absolute
+            target. Grading raw E-factor would penalise a low-atom-economy
+            reaction twice for the same fact, since its floor is set by
+            its atom economy.
+
+        This is a transparent scoring rule of our own, not a scientific
+        standard.
+        """
         ae = self.atom_economy()
         ef = self.e_factor(reactant_masses_g, actual_yield_g)
+        floor = self.e_factor_floor()
+        excess = self.excess_e_factor(reactant_masses_g, actual_yield_g)
 
         if ae >= 90:
             ae_points = 4
@@ -256,13 +306,13 @@ class Reaction:
         else:
             ae_points = 0
 
-        if ef <= 0.5:
+        if excess <= 0.5:
             ef_points = 4
-        elif ef <= 2:
+        elif excess <= 2:
             ef_points = 3
-        elif ef <= 5:
+        elif excess <= 5:
             ef_points = 2
-        elif ef <= 15:
+        elif excess <= 15:
             ef_points = 1
         else:
             ef_points = 0
@@ -281,7 +331,8 @@ class Reaction:
             letter = "F"
 
         return (
-            f"{letter}  (Atom economy: {ae:.0f}% | E-factor: {ef:.1f})"
+            f"{letter}  (Atom economy: {ae:.0f}% | "
+            f"E-factor: {ef:.1f}, best possible {floor:.1f})"
         )
 
     def summary(

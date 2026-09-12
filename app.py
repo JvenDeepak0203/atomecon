@@ -33,21 +33,54 @@ st.divider()
 
 st.subheader("1. Describe your reaction")
 
+# Ready-made reactions so a first-time visitor sees the tool work
+# immediately. Every one of these auto-balances - do not add an equation
+# without checking, since some have more than one valid balancing ratio
+# and Reaction.auto() will refuse them.
+EXAMPLES = {
+    "Start from an example...": None,
+    "Methane combustion": ("CH4, O2", "CO2, H2O", "CO2"),
+    "Haber process (ammonia)": ("N2, H2", "NH3", "NH3"),
+    "Rusting of iron": ("Fe, O2", "Fe2O3", "Fe2O3"),
+    "Neutralisation": ("NaOH, HCl", "NaCl, H2O", "NaCl"),
+    "Ethanol combustion": ("C2H5OH, O2", "CO2, H2O", "CO2"),
+    "Photosynthesis": ("CO2, H2O", "C6H12O6, O2", "C6H12O6"),
+}
+
+
+def load_example():
+    preset = EXAMPLES[st.session_state["example_choice"]]
+    if preset is not None:
+        st.session_state["reactants_text"] = preset[0]
+        st.session_state["products_text"] = preset[1]
+        st.session_state["desired_product"] = preset[2]
+
+
+st.selectbox(
+    "Not sure what to type?",
+    list(EXAMPLES.keys()),
+    key="example_choice",
+    on_change=load_example,
+)
+
 col1, col2 = st.columns(2)
 with col1:
     reactants_text = st.text_input(
         "Reactants (comma-separated formulas)",
         placeholder="e.g. CH4, O2",
+        key="reactants_text",
     )
 with col2:
     products_text = st.text_input(
         "Products (comma-separated formulas)",
         placeholder="e.g. CO2, H2O",
+        key="products_text",
     )
 
 desired_product = st.text_input(
     "Which product do you care about?",
     placeholder="e.g. CO2",
+    key="desired_product",
 )
 
 build_clicked = st.button("Balance and analyze", type="primary")
@@ -168,9 +201,20 @@ if "reaction" in st.session_state:
         st.divider()
         st.subheader("4. Full report")
 
-        col_a, col_b = st.columns(2)
+        col_a, col_b, col_c = st.columns(3)
         col_a.metric("Percent yield", f"{rxn.percent_yield(reactant_masses, actual_yield):.1f}%")
         col_b.metric("E-factor", f"{rxn.e_factor(reactant_masses, actual_yield):.2f}")
+        col_c.metric(
+            "Avoidable waste",
+            f"{rxn.excess_e_factor(reactant_masses, actual_yield):.2f}",
+        )
+
+        st.caption(
+            f"This equation forces an E-factor of at least "
+            f"**{rxn.e_factor_floor():.2f}** - that waste is unavoidable no "
+            "matter how well you run it. Everything above that is avoidable, "
+            "and that is the part the grade scores you on."
+        )
 
         st.code(rxn.summary_table(reactant_masses, actual_yield))
 

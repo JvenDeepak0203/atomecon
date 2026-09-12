@@ -209,3 +209,45 @@ def test_limiting_reactant_identifies_the_scarce_one():
     rxn = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
     assert rxn.limiting_reactant({"CH4": 1.0, "O2": 2.0}) == "O2"
     assert rxn.limiting_reactant({"CH4": 0.01, "O2": 100.0}) == "CH4"
+
+
+def _methane():
+    return Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+
+
+def test_e_factor_floor_follows_from_atom_economy():
+    rxn = _methane()
+    expected = 100.0 / rxn.atom_economy() - 1.0
+    assert rxn.e_factor_floor() == pytest.approx(expected, abs=1e-9)
+
+
+def test_perfect_atom_economy_means_zero_floor():
+    rxn = Reaction.auto(["N2", "H2"], ["NH3"], desired_product="NH3")
+    assert rxn.atom_economy() == pytest.approx(100.0, abs=0.01)
+    assert rxn.e_factor_floor() == pytest.approx(0.0, abs=1e-9)
+
+
+def test_a_flawless_run_has_no_avoidable_waste():
+    """Exact stoichiometry at 100% yield: all remaining waste is forced."""
+    rxn = _methane()
+    masses = {"CH4": 16.043, "O2": 63.996}
+    perfect = rxn.theoretical_yield_g(masses)
+    assert rxn.excess_e_factor(masses, perfect) == pytest.approx(0.0, abs=0.01)
+    # ...but the raw E-factor is still well above zero, and that is the point.
+    assert rxn.e_factor(masses, perfect) > 0.8
+
+
+def test_perfect_technique_is_no_longer_invisible():
+    """A flawless run of a mediocre route must outscore a sloppy one."""
+    rxn = _methane()
+    masses = {"CH4": 16.043, "O2": 63.996}
+    perfect_grade = rxn.green_grade(masses, rxn.theoretical_yield_g(masses))
+    sloppy_grade = rxn.green_grade({"CH4": 60.6, "O2": 58.1}, 38.8)
+    assert perfect_grade.startswith("B")
+    assert sloppy_grade.startswith("C")
+
+
+def test_grade_reports_the_floor_so_the_number_is_interpretable():
+    rxn = _methane()
+    text = rxn.green_grade({"CH4": 60.6, "O2": 58.1}, 38.8)
+    assert "best possible" in text
