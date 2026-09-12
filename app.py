@@ -10,7 +10,7 @@ Deploy for free at share.streamlit.io (see README for steps).
 import pandas as pd
 import streamlit as st
 
-from atomecon import Reaction, ReactionLog, is_formula_plausible
+from atomecon import Reaction, ReactionLog, is_formula_plausible, to_subscripts
 
 # Slider bounds for reactant masses, in grams.
 MIN_REACTANT_G = 0.1
@@ -156,17 +156,33 @@ if build_clicked:
             # New reaction means the old yield figure is meaningless.
             st.session_state.pop("actual_yield", None)
 
-            # If the fields still hold an untouched example, that example's
-            # label is the best name for it. Otherwise leave the box empty
-            # and let the placeholder suggest a numbered fallback.
+            # Work out what to suggest as a name. The reaction's identity is
+            # its equation - which product you happen to care about does not
+            # change that - so only the reactants and products are compared.
+            # A different target is noted in brackets so two saved rows from
+            # the same equation stay tellable apart.
+            def same_formulas(typed, preset_text):
+                typed_parts = [p.strip() for p in typed.split(",") if p.strip()]
+                preset_parts = [p.strip() for p in preset_text.split(",") if p.strip()]
+                return sorted(typed_parts) == sorted(preset_parts)
+
             chosen = st.session_state.get("example_choice")
             preset = EXAMPLES.get(chosen)
-            came_from_example = preset is not None and (
-                reactants_text.strip() == preset[0]
-                and products_text.strip() == preset[1]
-                and desired_clean == preset[2]
+            same_equation = preset is not None and (
+                same_formulas(reactants_text, preset[0])
+                and same_formulas(products_text, preset[1])
             )
-            st.session_state["save_name"] = chosen if came_from_example else ""
+
+            if same_equation and desired_clean == preset[2]:
+                st.session_state["example_label"] = chosen
+            elif same_equation:
+                st.session_state["example_label"] = f"{chosen} ({desired_clean})"
+            else:
+                st.session_state["example_label"] = None
+
+            # Leave the box empty so the suggestion shows as a grey
+            # placeholder rather than text the user has to delete.
+            st.session_state["save_name"] = ""
         except ValueError as e:
             st.error(str(e))
             st.session_state.pop("reaction", None)
@@ -181,7 +197,62 @@ if "reaction" in st.session_state:
     st.metric("Atom economy", f"{rxn.atom_economy():.1f}%")
 
     with st.expander("See the step-by-step calculation"):
-        st.text(rxn.explain_atom_economy())
+        parts = rxn.atom_economy_breakdown()
+        target = to_subscripts(parts["desired_product"])
+
+        st.markdown(f"**Step 1 — the product you want: {target}**")
+        st.markdown(
+            f"One unit weighs **{parts['desired_molar_mass']:.2f} g/mol**, and "
+            f"the balanced equation makes **{parts['desired_coefficient']}** of "
+            "them."
+        )
+        st.latex(
+            r"%.2f \times %d = %.2f \text{ g}"
+            % (
+                parts["desired_molar_mass"],
+                parts["desired_coefficient"],
+                parts["desired_mass"],
+            )
+        )
+
+        st.markdown("**Step 2 — everything you put in**")
+        breakdown_rows = []
+        for row in parts["reactants"]:
+            breakdown_rows.append({
+                "Reactant": to_subscripts(row["formula"]),
+                "Coefficient": row["coefficient"],
+                "Molar mass (g/mol)": row["molar_mass"],
+                "Contributes (g)": row["mass"],
+            })
+        st.dataframe(
+            pd.DataFrame(breakdown_rows),
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Molar mass (g/mol)": st.column_config.NumberColumn(format="%.2f"),
+                "Contributes (g)": st.column_config.NumberColumn(format="%.2f"),
+            },
+        )
+        st.markdown(
+            f"Total mass of reactants: **{parts['total_reactant_mass']:.2f} g**"
+        )
+
+        st.markdown("**Step 3 — the ratio**")
+        st.latex(
+            r"\frac{%.2f}{%.2f} \times 100 = %.1f\%%"
+            % (
+                parts["desired_mass"],
+                parts["total_reactant_mass"],
+                parts["atom_economy"],
+            )
+        )
+        st.caption(
+            "Every gram that is not in that top number leaves as something "
+            "you did not want."
+        )
+
+        st.markdown("**Plain text** — use the copy icon in the corner:")
+        st.code(rxn.explain_atom_economy(), language=None)
 
     st.divider()
     st.subheader("3. Optional: add real lab data")
@@ -269,18 +340,20 @@ if "reaction" in st.session_state:
         "here to see which one is actually worth doing."
     )
 
-    fallback_name = f"Reaction {len(st.session_state['saved']) + 1}"
+    suggested_name = st.session_state.get("example_label")
+    if not suggested_name:
+        suggested_name = f"Reaction {len(st.session_state['saved']) + 1}"
 
     save_name = st.text_input(
         "Give this reaction a name",
-        placeholder=fallback_name,
+        placeholder=suggested_name,
         key="save_name",
     )
 
     if st.button("Save to comparison"):
         cleaned_name = save_name.strip()
         if not cleaned_name:
-            cleaned_name = fallback_name
+            cleaned_name = suggested_name
         entry = {
             "name": cleaned_name,
             "reaction": rxn,

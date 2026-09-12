@@ -100,14 +100,51 @@ class Reaction:
 
         return desired_mass / total_reactant_mass * 100
 
-    def explain_atom_economy(self) -> str:
-        lines = []
-        lines.append(f"Atom economy for {self.desired_product}:")
-        lines.append("")
+    def atom_economy_breakdown(self) -> dict:
+        """The numbers behind atom economy, as data rather than prose.
 
+        explain_atom_economy() formats these into plain text for a
+        terminal. Returning them separately lets a caller lay them out
+        however suits - a table, a web page, LaTeX - without re-deriving
+        anything or parsing the sentences back apart.
+        """
         one_unit_mass = self._product_masses[self.desired_product]
         how_many_made = self.products[self.desired_product]
         desired_mass = one_unit_mass * how_many_made
+
+        reactant_rows = []
+        total_reactant_mass = 0
+        for formula, coeff in self.reactants.items():
+            one_mass = self._reactant_masses[formula]
+            mass_of_this_reactant = one_mass * coeff
+            total_reactant_mass = total_reactant_mass + mass_of_this_reactant
+            reactant_rows.append({
+                "formula": formula,
+                "coefficient": coeff,
+                "molar_mass": one_mass,
+                "mass": mass_of_this_reactant,
+            })
+
+        return {
+            "desired_product": self.desired_product,
+            "desired_molar_mass": one_unit_mass,
+            "desired_coefficient": how_many_made,
+            "desired_mass": desired_mass,
+            "reactants": reactant_rows,
+            "total_reactant_mass": total_reactant_mass,
+            "atom_economy": desired_mass / total_reactant_mass * 100,
+        }
+
+    def explain_atom_economy(self) -> str:
+        parts = self.atom_economy_breakdown()
+        one_unit_mass = parts["desired_molar_mass"]
+        how_many_made = parts["desired_coefficient"]
+        desired_mass = parts["desired_mass"]
+        total_reactant_mass = parts["total_reactant_mass"]
+
+        lines = []
+        lines.append(f"Atom economy for {self.desired_product}:")
+        lines.append("")
 
         lines.append(
             f"Step 1: Molar mass of desired product ({self.desired_product}) "
@@ -121,20 +158,17 @@ class Reaction:
         lines.append("")
         lines.append("Step 3: Reactant masses:")
 
-        total_reactant_mass = 0
-        for formula, coeff in self.reactants.items():
-            one_mass = self._reactant_masses[formula]
-            mass_of_this_reactant = one_mass * coeff
-            total_reactant_mass = total_reactant_mass + mass_of_this_reactant
+        for row in parts["reactants"]:
             lines.append(
-                f"  {formula} (coeff {coeff}): {one_mass:.2f} g/mol x {coeff} "
-                f"= {mass_of_this_reactant:.2f} g"
+                f"  {row['formula']} (coeff {row['coefficient']}): "
+                f"{row['molar_mass']:.2f} g/mol x {row['coefficient']} "
+                f"= {row['mass']:.2f} g"
             )
 
         lines.append(f"  Total reactant mass = {total_reactant_mass:.2f} g")
         lines.append("")
 
-        result = desired_mass / total_reactant_mass * 100
+        result = parts["atom_economy"]
         lines.append(
             f"Step 4: {desired_mass:.2f} / {total_reactant_mass:.2f} x 100 "
             f"= {result:.1f}%"

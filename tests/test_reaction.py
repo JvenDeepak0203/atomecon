@@ -279,3 +279,28 @@ def test_plain_equation_is_unchanged_for_machines_and_monospace():
         desired_product="H2O",
     )
     assert rxn.equation() == "2H2 + O2 -> 2H2O"
+
+
+def test_breakdown_numbers_match_the_text_explanation():
+    """The prose and the data must never drift apart."""
+    rxn = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="H2O")
+    parts = rxn.atom_economy_breakdown()
+    text = rxn.explain_atom_economy()
+
+    assert f"{parts['desired_mass']:.2f}" in text
+    assert f"{parts['total_reactant_mass']:.2f}" in text
+    assert f"{parts['atom_economy']:.1f}%" in text
+
+
+def test_breakdown_lists_every_reactant():
+    rxn = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+    parts = rxn.atom_economy_breakdown()
+    assert [r["formula"] for r in parts["reactants"]] == ["CH4", "O2"]
+    assert parts["reactants"][1]["coefficient"] == 2
+
+
+def test_breakdown_total_is_the_sum_of_its_parts():
+    rxn = Reaction.auto(["C2H5OH", "O2"], ["CO2", "H2O"], desired_product="CO2")
+    parts = rxn.atom_economy_breakdown()
+    summed = sum(r["mass"] for r in parts["reactants"])
+    assert parts["total_reactant_mass"] == pytest.approx(summed, abs=1e-9)
