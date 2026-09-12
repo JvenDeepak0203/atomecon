@@ -59,3 +59,15 @@ def test_molar_mass_water():
 
 def test_molar_mass_glucose():
     assert molar_mass("C6H12O6") == pytest.approx(180.156, abs=0.01)
+
+
+def test_to_subscripts_converts_digits():
+    from atomecon import to_subscripts
+    assert to_subscripts("H2O") == "H\u2082O"
+    assert to_subscripts("C6H12O6") == "C\u2086H\u2081\u2082O\u2086"
+
+
+def test_to_subscripts_leaves_letters_and_brackets_alone():
+    from atomecon import to_subscripts
+    assert to_subscripts("Ca(OH)2") == "Ca(OH)\u2082"
+    assert to_subscripts("NaCl") == "NaCl"

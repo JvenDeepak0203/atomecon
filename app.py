@@ -29,6 +29,39 @@ st.caption(
 if "saved" not in st.session_state:
     st.session_state["saved"] = []
 
+with st.expander("New here? What these numbers mean"):
+    st.markdown(
+        """
+**Atom economy** asks: of all the atoms you put in, what fraction end up
+in the product you actually wanted?
+
+$$\\text{Atom economy} = \\frac{\\text{mass of desired product}}{\\text{total mass of reactants}} \\times 100$$
+
+It depends only on the balanced equation, so it is the same number for
+everyone who ever runs that reaction. You cannot improve it with better
+technique - only by choosing a different route to the same product.
+
+**Percent yield** is the opposite kind of number. It compares what you
+actually isolated against the most the equation allows, so it measures
+*you*: your technique, your losses, your conversion.
+
+The two are independent, and that trips people up. A reaction can hit
+100% yield and still be wasteful, if the equation sends half its atoms
+into a by-product. Burning methane is exactly that - 55% atom economy,
+because every single run discards the water.
+
+**E-factor** counts grams of waste per gram of product. Lower is better;
+0 would mean nothing wasted at all.
+
+**The floor.** E-factor cannot go below what atom economy permits. Even a
+flawless run discards whatever the equation sends elsewhere, so the best
+achievable E-factor is `100 / atom economy - 1`. A reaction at 50% atom
+economy can never beat 1.0, however carefully it is run. This app shows
+you that floor and grades the waste *above* it - the part you could
+actually have avoided.
+        """
+    )
+
 st.divider()
 
 st.subheader("1. Describe your reaction")
@@ -122,9 +155,18 @@ if build_clicked:
             st.session_state["reactant_list"] = reactant_list
             # New reaction means the old yield figure is meaningless.
             st.session_state.pop("actual_yield", None)
-            # ...and so is the old name, or you save one reaction under
-            # another reaction's label.
-            st.session_state.pop("save_name", None)
+
+            # If the fields still hold an untouched example, that example's
+            # label is the best name for it. Otherwise leave the box empty
+            # and let the placeholder suggest a numbered fallback.
+            chosen = st.session_state.get("example_choice")
+            preset = EXAMPLES.get(chosen)
+            came_from_example = preset is not None and (
+                reactants_text.strip() == preset[0]
+                and products_text.strip() == preset[1]
+                and desired_clean == preset[2]
+            )
+            st.session_state["save_name"] = chosen if came_from_example else ""
         except ValueError as e:
             st.error(str(e))
             st.session_state.pop("reaction", None)
@@ -135,7 +177,7 @@ if "reaction" in st.session_state:
     st.divider()
     st.subheader("2. Theoretical results")
 
-    st.success(f"Balanced equation: **{rxn.equation()}**")
+    st.success(f"Balanced equation: **{rxn.pretty_equation()}**")
     st.metric("Atom economy", f"{rxn.atom_economy():.1f}%")
 
     with st.expander("See the step-by-step calculation"):
@@ -227,31 +269,32 @@ if "reaction" in st.session_state:
         "here to see which one is actually worth doing."
     )
 
+    fallback_name = f"Reaction {len(st.session_state['saved']) + 1}"
+
     save_name = st.text_input(
         "Give this reaction a name",
-        value=rxn.equation(),
+        placeholder=fallback_name,
         key="save_name",
     )
 
     if st.button("Save to comparison"):
         cleaned_name = save_name.strip()
         if not cleaned_name:
-            st.error("Please give the reaction a name before saving.")
+            cleaned_name = fallback_name
+        entry = {
+            "name": cleaned_name,
+            "reaction": rxn,
+            "reactant_masses_g": dict(reactant_masses) if has_lab_data else None,
+            "actual_yield_g": actual_yield if has_lab_data else None,
+        }
+        st.session_state["saved"].append(entry)
+        if has_lab_data:
+            st.success(f"Saved '{cleaned_name}' with lab data.")
         else:
-            entry = {
-                "name": cleaned_name,
-                "reaction": rxn,
-                "reactant_masses_g": dict(reactant_masses) if has_lab_data else None,
-                "actual_yield_g": actual_yield if has_lab_data else None,
-            }
-            st.session_state["saved"].append(entry)
-            if has_lab_data:
-                st.success(f"Saved '{cleaned_name}' with lab data.")
-            else:
-                st.success(
-                    f"Saved '{cleaned_name}'. No lab data, so it will show "
-                    "atom economy but no grade."
-                )
+            st.success(
+                f"Saved '{cleaned_name}'. No lab data, so it will show "
+                "atom economy but no grade."
+            )
 
 # --- The comparison table, shown whenever anything is saved --------------
 if st.session_state["saved"]:
@@ -271,7 +314,7 @@ if st.session_state["saved"]:
     for record in log.to_records():
         table_rows.append({
             "Name": record["name"],
-            "Reaction": record["equation"],
+            "Reaction": record["equation_pretty"],
             "Atom economy": record["atom_economy"],
             "Grade": record["grade_letter"] if record["grade_letter"] else "-",
             "E-factor": record["e_factor"],
@@ -316,7 +359,7 @@ if st.session_state["saved"]:
         for position, entry in enumerate(st.session_state["saved"]):
             col_label, col_button = st.columns([4, 1])
             col_label.write(
-                f"**{entry['name']}** - {entry['reaction'].equation()}"
+                f"**{entry['name']}** - {entry['reaction'].pretty_equation()}"
             )
             if col_button.button("Remove", key=f"remove_{position}"):
                 st.session_state["saved"].pop(position)

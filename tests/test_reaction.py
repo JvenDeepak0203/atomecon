@@ -251,3 +251,31 @@ def test_grade_reports_the_floor_so_the_number_is_interpretable():
     rxn = _methane()
     text = rxn.green_grade({"CH4": 60.6, "O2": 58.1}, 38.8)
     assert "best possible" in text
+
+
+def test_pretty_equation_uses_a_real_arrow_and_subscripts():
+    rxn = Reaction(
+        reactants={"H2": 2, "O2": 1},
+        products={"H2O": 2},
+        desired_product="H2O",
+    )
+    assert rxn.pretty_equation() == "2H\u2082 + O\u2082 \u2192 2H\u2082O"
+
+
+def test_pretty_equation_keeps_coefficients_full_size():
+    """The leading 2 multiplies the molecule; it is not an atom count."""
+    rxn = Reaction(
+        reactants={"H2": 2, "O2": 1},
+        products={"H2O": 2},
+        desired_product="H2O",
+    )
+    assert rxn.pretty_equation().startswith("2H")
+
+
+def test_plain_equation_is_unchanged_for_machines_and_monospace():
+    rxn = Reaction(
+        reactants={"H2": 2, "O2": 1},
+        products={"H2O": 2},
+        desired_product="H2O",
+    )
+    assert rxn.equation() == "2H2 + O2 -> 2H2O"

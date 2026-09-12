@@ -64,6 +64,7 @@ class ReactionLog:
             rows.append({
                 "name": entry["name"],
                 "equation": reaction._equation_str(),
+                "equation_pretty": reaction.pretty_equation(),
                 "atom_economy": reaction.atom_economy(),
                 "grade": grade,
                 "grade_letter": grade_letter,

@@ -21,7 +21,7 @@ and writes every loop out the long way, for readability while learning.
 
 from typing import Dict, List, Optional
 
-from .formula import parse_formula, molar_mass
+from .formula import parse_formula, molar_mass, to_subscripts
 from .balance import balance_equation
 
 
@@ -422,6 +422,35 @@ class Reaction:
 
     def equation(self) -> str:
         return self._equation_str()
+
+    def pretty_equation(self, arrow: str = "\u2192") -> str:
+        """Display form of the equation: 2H\u2082O with a real arrow.
+
+        Coefficients stay full size, because they multiply the whole
+        molecule rather than counting atoms inside it - only digits within
+        a formula are subscripted.
+
+        The result is for showing to people, not for parsing. Anything a
+        machine reads back, or anything that has to line up in a monospace
+        column, should use equation() instead.
+        """
+        def side(compounds):
+            parts = []
+            for formula, coeff in compounds.items():
+                pretty = to_subscripts(formula)
+                if coeff != 1:
+                    parts.append(f"{coeff}{pretty}")
+                else:
+                    parts.append(pretty)
+
+            text = ""
+            for i, part in enumerate(parts):
+                if i > 0:
+                    text = text + " + "
+                text = text + part
+            return text
+
+        return f"{side(self.reactants)} {arrow} {side(self.products)}"
 
     def _equation_str(self) -> str:
         def side(compounds):
