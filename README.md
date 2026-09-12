@@ -1,8 +1,8 @@
-﻿# atomecon
+# atomecon
 
 🧪 **[Try it live in your browser](https://atomecon.streamlit.app/)** - no install needed.
 
-Lightweight green chemistry metrics - atom economy, theoretical yield, percent yield, E-factor, and automatic equation balancing - computed from **plain chemical formulas**. No RDKit, no SMILES, no heavy dependencies.
+Lightweight green chemistry metrics - atom economy, theoretical yield, percent yield, E-factor, and automatic equation balancing - computed from **plain chemical formulas**. No RDKit, no SMILES, no dependencies.
 
 ## Who this is for
 
@@ -12,11 +12,7 @@ Lightweight green chemistry metrics - atom economy, theoretical yield, percent y
 
 ## Why this exists
 
-Existing chemistry packages either don't cover green chemistry metrics at all (they focus on general stoichiometry), or require RDKit and SMILES notation to calculate even a single metric like atom economy. `atomecon` bundles the standard metrics together, balances equations automatically, takes formulas the way you'd write them in a chemistry class (`"C2H5OH"`, not `"CCO"`), and has zero dependencies.
-
-## Try it without installing anything
-
-**[atomecon.streamlit.app](https://atomecon.streamlit.app/)** - type in a reaction's formulas, get it balanced and analyzed instantly in your browser.
+Existing chemistry packages either don't cover green chemistry metrics at all, or require RDKit and SMILES notation to calculate even a single metric like atom economy. `atomecon` bundles the standard metrics together, balances equations automatically, takes formulas the way you'd write them in a chemistry class (`"C2H5OH"`, not `"CCO"`), and has zero dependencies.
 
 ## Install
 
@@ -24,21 +20,68 @@ Existing chemistry packages either don't cover green chemistry metrics at all (t
 pip install atomecon
 ```
 
-## Core concepts
-
-- **Atom economy** is *theoretical* - it only depends on the balanced equation and molar masses. It's always computable, with no lab data.
-- **Theoretical yield**, **percent yield**, and **E-factor** are *experimental* - they depend on the real masses of reactants you used and the real mass of product you isolated. These vary run to run.
-
-`atomecon` keeps this distinction explicit: `atom_economy()` takes no arguments beyond the reaction itself, while `e_factor()` and `percent_yield()` require you to supply real measured masses.
-
-## Quick start - the one-line version
+## Quick start
 
 ```python
 from atomecon import analyze
 
 analyze(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
 ```
-Balances the equation automatically and prints a full report - no coefficients, no separate method calls needed.
+
+Balances the equation and prints a report. No coefficients, no separate method calls.
+
+## The three kinds of number
+
+This is the distinction the whole library is built around, and the one students most often blur together.
+
+**Atom economy is about the reaction you chose.** It asks what fraction of the reactant mass ends up in the product you wanted, according to the balanced equation. It needs no lab data, and it is identical for everyone who ever runs that reaction. Better technique cannot improve it. Only a different route can.
+
+**Percent yield is about how you ran it.** It compares what you actually isolated against the most the equation allows, given the masses you started with. It varies run to run.
+
+**E-factor is about waste**, in grams of waste per gram of product.
+
+`atomecon` keeps this explicit in its API: `atom_economy()` takes no arguments, while `percent_yield()` and `e_factor()` require real measured masses.
+
+### The E-factor floor
+
+E-factor and atom economy are not independent, and this trips people up. Even a flawless run discards every atom the equation sends into the other products. So the lowest E-factor a reaction can ever reach is fixed by its atom economy:
+
+```
+E-factor floor = 100 / atom economy - 1
+```
+
+A reaction at 100% atom economy has a floor of 0. One at 50% has a floor of 1.0: a gram of waste per gram of product, forever, no matter how carefully it is run. Methane combustion at 55% can never get below 0.82.
+
+```python
+from atomecon import Reaction
+
+rxn = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+
+print(rxn.e_factor_floor())
+# 0.819...  the best this equation can ever do
+
+masses = {"CH4": 16.043, "O2": 63.996}
+print(rxn.excess_e_factor(masses, actual_yield_g=44.0))
+# 0.0  a flawless run: all remaining waste is forced by the equation
+```
+
+## Green grade
+
+A single A-F letter for comparing reactions at a glance.
+
+```python
+print(rxn.green_grade(masses, actual_yield_g=44.0))
+# B  (Atom economy: 55% | E-factor: 0.8, best possible 0.8)
+```
+
+It scores two deliberately separate things:
+
+- **Atom economy** scores the route you picked.
+- **Avoidable waste** - E-factor above the floor - scores how you ran it.
+
+Grading raw E-factor instead would punish a low-atom-economy reaction twice for the same fact, since its floor is set by its atom economy. Under that older approach a perfect run of methane combustion scored no better than a careless one, because the reaction could never reach the top E-factor band regardless. Grading the avoidable part fixes that: technique becomes visible, while a wasteful route still cannot reach an A.
+
+This is a transparent scoring rule of our own devising, **not a scientific standard**. The bands live in `green_grade()` and you are welcome to disagree with them.
 
 ## Full walkthrough
 
@@ -56,59 +99,111 @@ print(rxn.atom_economy())
 # 75.0  (theoretical - no lab data needed)
 
 masses = {"C7H6O3": 5.0, "C4H6O3": 5.0}
-print(rxn.theoretical_yield_g(masses))
-print(rxn.percent_yield(masses, actual_yield_g=4.2))
-print(rxn.e_factor(masses, actual_yield_g=4.2))
-print(rxn.green_grade(masses, actual_yield_g=4.2))
+
+print(rxn.limiting_reactant(masses))                    # C7H6O3 - runs out first
+print(rxn.theoretical_yield_g(masses))                  # 6.52 g
+print(rxn.percent_yield(masses, actual_yield_g=4.2))    # 64.4
+print(rxn.e_factor(masses, actual_yield_g=4.2))         # 1.38
+print(rxn.e_factor_floor())                             # 0.33
+print(rxn.excess_e_factor(masses, actual_yield_g=4.2))  # 1.05
+print(rxn.green_grade(masses, actual_yield_g=4.2))      # B  (...)
 
 print(rxn.summary_table(reactant_masses_g=masses, actual_yield_g=4.2))
 ```
 
 ## Automatic equation balancing
 
-Don't want to work out coefficients yourself? Just give formulas:
-
 ```python
-from atomecon import Reaction
-
 rxn = Reaction.auto(["N2", "H2"], ["NH3"], desired_product="NH3")
 print(rxn)
 # <Reaction N2 + 3H2 -> 2NH3>
 ```
 
-This uses real linear algebra (Gaussian elimination over exact fractions) to solve for the smallest whole-number coefficients - the same process you'd do by hand, automated.
+Gaussian elimination over exact fractions, solving for the smallest whole-number coefficients.
 
-**Known limitation:** a small number of equations have more than one valid balancing ratio (a genuine mathematical ambiguity, not a bug) and will raise a clear error asking you to specify coefficients manually instead of guessing.
+If you only want the coefficients and not a whole `Reaction`:
 
-## Learning mode: see the calculation, not just the answer
+```python
+from atomecon import balance_equation
+
+reactants, products = balance_equation(["CH4", "O2"], ["CO2", "H2O"])
+print(reactants, products)
+# {'CH4': 1, 'O2': 2} {'CO2': 1, 'H2O': 2}
+```
+
+**Known limitation:** a small number of equations have more than one valid balancing ratio. This is a genuine mathematical ambiguity, not a bug. Those raise a clear error asking you to supply coefficients yourself rather than guessing. The aspirin synthesis above is one of them, which is why that example is written out with explicit coefficients.
+
+## Impossible results are refused
+
+A yield heavier than everything you put in violates conservation of mass. Left unchecked it produces negative waste, a negative E-factor, and a flattering grade for a reaction that cannot exist.
+
+```python
+rxn = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+rxn.e_factor({"CH4": 1.0, "O2": 2.0}, actual_yield_g=40.0)
+# ValueError: actual_yield_g (40.00 g) is greater than the total mass of
+# reactants used (3.00 g). That breaks conservation of mass ...
+```
+
+`Reaction` also verifies the equation is atom-balanced on construction. Pass `allow_unbalanced=True` to override.
+
+## Learning mode: see the calculation
 
 ```python
 print(rxn.explain_atom_economy())
 ```
 
-## Green grade: one number to compare reactions at a glance
+Prints the molar masses, the coefficients, the totals, and the final division as numbered steps.
+
+For the same numbers as data rather than prose:
 
 ```python
-print(rxn.green_grade(masses, actual_yield_g=4.2))
-# B  (Atom economy: 75% | E-factor: 1.4)
+parts = rxn.atom_economy_breakdown()
+print(parts["total_reactant_mass"])   # 80.039
+print(parts["reactants"][0])          # {'formula': 'CH4', 'coefficient': 1, ...}
 ```
 
-A simple, transparent scoring rule (not a scientific standard) - combines atom economy and E-factor into a single A-F grade.
-
-## Comparing multiple reactions
+## Comparing reactions
 
 ```python
 from atomecon import Reaction, ReactionLog
 
-log = ReactionLog()
-log.add("Aspirin route", rxn, reactant_masses_g=masses, actual_yield_g=4.2)
-
 combustion = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
-log.add("Methane combustion", combustion)
+
+log = ReactionLog()
+log.add(
+    "Methane combustion",
+    combustion,
+    reactant_masses_g={"CH4": 16.043, "O2": 63.996},
+    actual_yield_g=44.0,
+)
+log.add("Haber process", Reaction.auto(["N2", "H2"], ["NH3"], desired_product="NH3"))
 
 print(log.comparison_table())
 ```
-Builds a table sorted by atom economy (greenest first). `ReactionLog` is in-memory only - it resets each time your program runs.
+
+Prints a table sorted by atom economy, greenest first. For the same data as records you can feed into a spreadsheet or a web page:
+
+```python
+for record in log.to_records():
+    print(record["name"], record["atom_economy"], record["grade_letter"])
+```
+
+`ReactionLog` is in-memory only. It resets each time your program runs.
+
+## Display helpers
+
+`equation()` returns plain ASCII, which is what you want for terminals, monospace tables, and anything a machine reads back. For showing to people:
+
+```python
+print(rxn.pretty_equation())
+# CH₄ + 2O₂ → CO₂ + 2H₂O
+
+from atomecon import to_subscripts
+print(to_subscripts("Ca(OH)2"))
+# Ca(OH)₂
+```
+
+Coefficients stay full size, because they multiply the molecule rather than counting atoms inside it.
 
 ## Formula plausibility checking
 
@@ -117,10 +212,18 @@ from atomecon import is_formula_plausible
 
 is_formula_plausible("C8H18")   # True  (real octane)
 is_formula_plausible("C8H23")   # False (impossible - odd total valence)
-is_formula_plausible("Fe2O3")   # True  (iron has variable valence - not checked, benefit of the doubt)
+is_formula_plausible("Fe2O3")   # True  (iron has variable valence - not checked)
 ```
 
-**Important limitation:** this can only rule out formulas as impossible - it cannot prove a formula is real, and it deliberately skips elements with variable real-world valence (iron, sulfur, phosphorus, nitrogen, most transition metals) rather than risk a wrong answer. This is a long way from full molecular validity checking (which is what RDKit does using real molecular structure) - it's one useful mathematical shortcut, not a replacement for it.
+**Important limitation:** this can only rule formulas out as impossible. It cannot prove a formula is real, and it deliberately skips elements with variable valence (iron, sulfur, phosphorus, nitrogen, most transition metals) rather than risk a wrong answer. This is one mathematical shortcut, not a replacement for real molecular validity checking.
+
+To see the reasoning rather than just the verdict:
+
+```python
+from atomecon import explain_formula_plausibility
+
+print(explain_formula_plausibility("C8H23"))
+```
 
 ## Formula syntax
 
@@ -132,29 +235,31 @@ parse_formula("Fe3(Fe(CN)6)2") # {"Fe": 5, "C": 12, "N": 12}
 molar_mass("C6H12O6")          # 180.156
 ```
 
-## Reaction balance checking
+## What this library does NOT do
 
-`Reaction` verifies the equation is atom-balanced on construction and raises a clear error if it isn't. Pass `allow_unbalanced=True` to override.
+- **Does not verify a formula represents a real molecule** beyond the valence-parity check above. No bonding or structure model like RDKit.
+- **Does not verify a reaction is chemically real.** It will happily compute metrics for an atom-balanced but chemically impossible reaction.
+- **No charge or ionic support.** Formulas are tracked by atoms only, not electric charge.
+- **The green grade is not a standard.** It is a scoring rule of our own.
 
-## What this library does NOT do (known scope limits)
-
-- **Does not verify a formula represents a real molecule** beyond the basic valence-parity check above - no bonding/structure model like RDKit
-- **Does not verify a reaction is chemically real** - it will calculate metrics for atom-balanced but chemically implausible reactions
-- **No charge/ionic support** - formulas are tracked by atoms only, not electric charge
-
-## Try the demo script
+## Try the demo
 
 ```bash
 python demo.py
 ```
 
+A guided tour: balancing, the yield-versus-atom-economy distinction, the E-factor floor, route comparison, and the conservation-of-mass check.
+
 ## Web app
 
 Live at [atomecon.streamlit.app](https://atomecon.streamlit.app/), or run it yourself:
+
 ```bash
 pip install streamlit
 streamlit run app.py
 ```
+
+Yield sliders are capped at the theoretical maximum, so impossible results cannot be entered. Reactions can be saved, compared side by side, and exported to CSV.
 
 ## Running tests
 
@@ -162,6 +267,19 @@ streamlit run app.py
 pip install pytest
 pytest
 ```
+
+## Changelog
+
+**0.1.2**
+
+- Yields exceeding the total reactant mass are now rejected. Previously these produced a negative E-factor and an undeservedly good grade.
+- `green_grade()` now scores avoidable waste (E-factor above the floor) rather than raw E-factor, so a low-atom-economy reaction is no longer penalised twice and good technique is visible.
+- New: `limiting_reactant()`, `e_factor_floor()`, `excess_e_factor()`, `atom_economy_breakdown()`, `pretty_equation()`, `to_subscripts()`, `ReactionLog.to_records()`.
+- `comparison_table()` now uses stable column widths and right-aligned numbers.
+- Added `demo.py`, which earlier versions of this README referenced without shipping it.
+- Web app: example presets, saved-reaction comparison, CSV export, formatted working.
+
+**0.1.1** - initial public release.
 
 ## License
 
