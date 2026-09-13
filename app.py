@@ -8,25 +8,27 @@ Deploy for free at share.streamlit.io (see README for steps).
 """
 
 import html
-import io
+import math
 
 import pandas as pd
 import streamlit as st
 
 from atomecon import Reaction, ReactionLog, is_formula_plausible, to_subscripts
 
-# Mass ranges for the reactant sliders: (minimum, maximum, step) in grams.
-# A single fixed range cannot serve both microscale lab work and industrial
-# comparisons, so the user picks.
+# Upper limits for the reactant sliders, in grams. A single fixed range
+# cannot serve both microscale lab work and industrial comparisons, so the
+# user picks. Every scale uses the same 0.1 g graduation.
 MASS_SCALES = {
-    "Up to 1 g": (0.01, 1.0, 0.01),
-    "Up to 5 g": (0.01, 5.0, 0.05),
-    "Up to 10 g": (0.1, 10.0, 0.1),
-    "Up to 50 g": (0.1, 50.0, 0.5),
-    "Up to 100 g": (0.1, 100.0, 1.0),
-    "Up to 1 kg": (1.0, 1000.0, 5.0),
+    "Up to 1 g": 1.0,
+    "Up to 5 g": 5.0,
+    "Up to 10 g": 10.0,
+    "Up to 50 g": 50.0,
+    "Up to 100 g": 100.0,
+    "Up to 1 kg": 1000.0,
 }
 DEFAULT_SCALE = "Up to 100 g"
+MASS_MIN_G = 0.1
+MASS_STEP_G = 0.1
 
 # Ready-made reactions so a first-time visitor sees the tool work
 # immediately. Every one of these auto-balances - do not add an equation
@@ -387,7 +389,9 @@ if "reaction" in st.session_state:
         index=list(MASS_SCALES.keys()).index(DEFAULT_SCALE),
         key="mass_scale",
     )
-    scale_min, scale_max, scale_step = MASS_SCALES[scale_name]
+    scale_min = MASS_MIN_G
+    scale_max = MASS_SCALES[scale_name]
+    scale_step = MASS_STEP_G
 
     reactant_masses = {}
     for formula in st.session_state["reactant_list"]:
@@ -413,7 +417,16 @@ if "reaction" in st.session_state:
     theoretical = rxn.theoretical_yield_g(reactant_masses)
     limiting = rxn.limiting_reactant(reactant_masses)
 
-    max_yield = round(theoretical, 2)
+    # Match the 0.1 g graduation of the reactant sliders. The cap is
+    # rounded DOWN so it can never sit above the theoretical yield, which
+    # would let the slider reach an impossible value. Reactions producing
+    # under 0.1 g fall back to a finer step, or there would be nothing to
+    # drag.
+    yield_step = 0.1
+    max_yield = math.floor(theoretical * 10) / 10
+    if max_yield < 0.1:
+        yield_step = 0.01
+        max_yield = math.floor(theoretical * 100) / 100
     if max_yield < 0.01:
         max_yield = 0.01
 
@@ -424,7 +437,7 @@ if "reaction" in st.session_state:
         f"Grams of {to_subscripts(rxn.desired_product)} actually obtained",
         min_value=0.0,
         max_value=max_yield,
-        step=0.01,
+        step=yield_step,
         key="actual_yield",
     )
     actual_yield = st.session_state["actual_yield"]
