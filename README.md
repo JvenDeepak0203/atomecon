@@ -244,7 +244,11 @@ molar_mass("C6H12O6")          # 180.156
 
 ## Try the demo
 
+`demo.py` ships with the source, not with the wheel, so grab the repository:
+
 ```bash
+git clone https://github.com/JvenDeepak0203/atomecon
+cd atomecon
 python demo.py
 ```
 

@@ -1,0 +1,9 @@
+# Files that live at the project root and are not part of the importable
+# package, so setuptools does not pick them up on its own.
+#
+# demo.py matters because README.md tells people to run it, and
+# tests/test_packaging.py asserts it exists - without this line, anyone
+# who downloads the source distribution and runs pytest gets a failure.
+include demo.py
+include app.py
+include requirements.txt
