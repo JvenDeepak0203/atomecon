@@ -59,3 +59,40 @@ def test_changelog_mentions_the_current_version():
     import atomecon
 
     assert atomecon.__version__ in _read("README.md")
+
+
+def test_readme_documents_the_semi_public_helpers():
+    """Names outside __all__ that the app imports by module path.
+
+    The __all__ check above cannot see these, which is exactly how they
+    went undocumented for a whole release.
+    """
+    readme = _read("README.md")
+    missing = []
+    for name in [
+        "possible_balances",
+        "grade_letter",
+        "ATOM_ECONOMY_BANDS",
+        "AVOIDABLE_WASTE_BANDS",
+    ]:
+        if name not in readme:
+            missing.append(name)
+    assert not missing, f"undocumented in README: {missing}"
+
+
+def test_app_examples_are_documented_as_working():
+    """Every dropdown preset must parse; a broken example ships silently."""
+    import ast
+    import atomecon
+
+    source = _read("app.py")
+    start = source.index("EXAMPLES = {")
+    end = source.index("}", start) + 1
+    examples = ast.literal_eval(source[start + len("EXAMPLES = "):end])
+
+    for label, preset in examples.items():
+        if preset is None:
+            continue
+        for text in (preset[0], preset[1]):
+            for formula in text.split(","):
+                atomecon.parse_formula(formula.strip())

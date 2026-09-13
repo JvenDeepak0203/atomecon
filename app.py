@@ -43,8 +43,13 @@ MASS_MIN_G = 0.01
 MASS_STEP_G = 0.01
 
 # Ready-made reactions so a first-time visitor sees the tool work
-# immediately. Every one of these auto-balances - do not add an equation
-# without checking, since some have more than one valid balancing ratio.
+# immediately. All but the last balance uniquely - check before adding
+# any, since some equations have more than one valid ratio.
+#
+# "Incomplete combustion" is ambiguous ON PURPOSE: it sends the user to
+# the balance picker, which is otherwise invisible unless they happen to
+# type an ambiguous equation themselves. How much CO versus CO2 you get
+# depends on the air supply, so every option it offers is real chemistry.
 EXAMPLES = {
     "Start from an example...": None,
     "Methane combustion": ("CH4, O2", "CO2, H2O", "CO2"),
@@ -53,6 +58,8 @@ EXAMPLES = {
     "Neutralisation": ("NaOH, HCl", "NaCl, H2O", "NaCl"),
     "Ethanol combustion": ("C2H5OH, O2", "CO2, H2O", "CO2"),
     "Photosynthesis": ("CO2, H2O", "C6H12O6, O2", "C6H12O6"),
+    "Prussian blue": ("FeSO4, K3[Fe(CN)6]", "Fe3[Fe(CN)6]2, K2SO4", "Fe3[Fe(CN)6]2"),
+    "Incomplete combustion (has several answers)": ("C, O2", "CO, CO2", "CO2"),
 }
 
 # Column names in the exported CSV. The first six are for reading; the

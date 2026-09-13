@@ -22,4 +22,4 @@ __all__ = [
     "is_formula_plausible",
     "explain_formula_plausibility",
 ]
-__version__ = "0.1.2"
+__version__ = "0.1.3"

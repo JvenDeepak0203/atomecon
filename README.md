@@ -81,7 +81,19 @@ It scores two deliberately separate things:
 
 Grading raw E-factor instead would punish a low-atom-economy reaction twice for the same fact, since its floor is set by its atom economy. Under that older approach a perfect run of methane combustion scored no better than a careless one, because the reaction could never reach the top E-factor band regardless. Grading the avoidable part fixes that: technique becomes visible, while a wasteful route still cannot reach an A.
 
-This is a transparent scoring rule of our own devising, **not a scientific standard**. The bands live in `green_grade()` and you are welcome to disagree with them.
+This is a transparent scoring rule of our own devising, **not a scientific standard**. The bands are module-level constants so you can read them, show them to someone, or disagree with them:
+
+```python
+from atomecon.reaction import (
+    ATOM_ECONOMY_BANDS,      # [(90, 4), (75, 3), (60, 2), (40, 1)]  at least
+    AVOIDABLE_WASTE_BANDS,   # [(0.5, 4), (2, 3), (5, 2), (15, 1)]   at most
+    grade_letter,
+)
+
+grade_letter(3, 3)   # 'B' - the letter for a given pair of scores
+```
+
+Worth knowing where these numbers came from. The atom economy thresholds roughly track real categories of reaction. The waste thresholds echo the shape of Sheldon's published E-factor figures, but those describe *total* waste across industries while these apply to *avoidable* waste, which is a different quantity. Treat them as a starting point, not a derivation.
 
 ## Full walkthrough
 
@@ -131,7 +143,27 @@ print(reactants, products)
 # {'CH4': 1, 'O2': 2} {'CO2': 1, 'H2O': 2}
 ```
 
-**Known limitation:** a small number of equations have more than one valid balancing ratio. This is a genuine mathematical ambiguity, not a bug. Those raise a clear error asking you to supply coefficients yourself rather than guessing. The aspirin synthesis above is one of them, which is why that example is written out with explicit coefficients.
+**When one answer is not enough.** Some equations have more than one valid balancing ratio. This is a genuine mathematical ambiguity, not a bug, so `balance_equation()` and `Reaction.auto()` raise rather than guess. To see the options instead:
+
+```python
+from atomecon.balance import possible_balances
+
+for reactants, products in possible_balances(["C", "O2"], ["CO", "CO2"]):
+    print(reactants, products)
+# {'C': 3, 'O2': 2} {'CO': 2, 'CO2': 1}
+# {'C': 4, 'O2': 3} {'CO': 2, 'CO2': 2}
+# {'C': 5, 'O2': 3} {'CO': 4, 'CO2': 1}
+# ...
+```
+
+Returned simplest first, every coefficient a positive whole number, every one atom-balanced. It cannot return *all* of them: when the solution space has more than one dimension there are infinitely many, so this returns the tidiest ones found within a bounded search.
+
+Two different things cause this, and they mean opposite things:
+
+- **Several answers are all correct.** Burning carbon really does give a mix of CO and CO2, and the ratio depends on the air supply. Pick the one matching your conditions.
+- **One answer is correct and the rest are artifacts.** The aspirin synthesis is ambiguous only because all four species happen to share H:O = 2:1, which makes the oxygen constraint redundant. `11C7H6O3 + C4H6O3 -> 9C9H8O4` balances perfectly and is nonsense.
+
+Atom counts alone cannot tell these apart, so the choice is yours. It matters: across valid balancings of `C + O2 -> CO + CO2`, atom economy for CO2 ranges from 20.8% to 75.9%.
 
 ## Impossible results are refused
 
@@ -235,6 +267,18 @@ parse_formula("Fe3(Fe(CN)6)2") # {"Fe": 5, "C": 12, "N": 12}
 molar_mass("C6H12O6")          # 180.156
 ```
 
+Round, square and curly brackets all group, so coordination compounds can be
+written the conventional way:
+
+```python
+parse_formula("K3[Fe(CN)6]")   # {"K": 3, "Fe": 1, "C": 6, "N": 6}
+parse_formula("[Cu(NH3)4]SO4") # {"Cu": 1, "N": 4, "H": 12, "S": 1, "O": 4}
+molar_mass("K3[Fe(CN)6]")      # 329.247
+```
+
+Bracket types must match: `K3(Fe(CN)6]` is rejected rather than quietly
+accepted.
+
 ## What this library does NOT do
 
 - **Does not verify a formula represents a real molecule** beyond the valence-parity check above. No bonding or structure model like RDKit.
@@ -263,7 +307,15 @@ pip install streamlit
 streamlit run app.py
 ```
 
-Yield sliders are capped at the theoretical maximum, so impossible results cannot be entered. Reactions can be saved, compared side by side, and exported to CSV.
+What the app adds over the library:
+
+- Worked examples in a dropdown, including a deliberately ambiguous one
+- Yield sliders capped at the theoretical maximum, so impossible results cannot be entered, with a selectable mass range from 1 g to 1 kg
+- The atom economy calculation laid out step by step, with the arithmetic shown
+- A picker for equations with several valid balancings
+- Save reactions and compare them side by side, sorted greenest first
+- Export the comparison to CSV and load it back later
+- A reference diagram for how the grade is worked out
 
 ## Running tests
 
@@ -273,6 +325,13 @@ pytest
 ```
 
 ## Changelog
+
+**0.1.3**
+
+- Square and curly brackets are now accepted in formulas, so coordination compounds such as `K3[Fe(CN)6]` parse. Mismatched bracket types are rejected.
+- New `possible_balances()`, which lists the simple whole-number balancings of an ambiguous equation instead of refusing outright.
+- Grading bands exposed as `ATOM_ECONOMY_BANDS`, `AVOIDABLE_WASTE_BANDS` and `grade_letter()`, so the rule can be shown rather than only applied.
+- Web app: balance picker, CSV import, selectable mass range, grading reference diagram, Prussian blue and ambiguous-reaction examples, and an unreadable formula now reports an error instead of crashing the page.
 
 **0.1.2**
 
