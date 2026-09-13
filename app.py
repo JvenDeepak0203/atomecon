@@ -8,16 +8,82 @@ Deploy for free at share.streamlit.io (see README for steps).
 """
 
 import html
+import io
 
 import pandas as pd
 import streamlit as st
 
 from atomecon import Reaction, ReactionLog, is_formula_plausible, to_subscripts
 
-# Slider bounds for reactant masses, in grams.
-MIN_REACTANT_G = 0.1
-MAX_REACTANT_G = 100.0
-MASS_STEP_G = 0.1
+# Mass ranges for the reactant sliders: (minimum, maximum, step) in grams.
+# A single fixed range cannot serve both microscale lab work and industrial
+# comparisons, so the user picks.
+MASS_SCALES = {
+    "Up to 1 g": (0.01, 1.0, 0.01),
+    "Up to 5 g": (0.01, 5.0, 0.05),
+    "Up to 10 g": (0.1, 10.0, 0.1),
+    "Up to 50 g": (0.1, 50.0, 0.5),
+    "Up to 100 g": (0.1, 100.0, 1.0),
+    "Up to 1 kg": (1.0, 1000.0, 5.0),
+}
+DEFAULT_SCALE = "Up to 100 g"
+
+# Ready-made reactions so a first-time visitor sees the tool work
+# immediately. Every one of these auto-balances - do not add an equation
+# without checking, since some have more than one valid balancing ratio.
+EXAMPLES = {
+    "Start from an example...": None,
+    "Methane combustion": ("CH4, O2", "CO2, H2O", "CO2"),
+    "Haber process (ammonia)": ("N2, H2", "NH3", "NH3"),
+    "Rusting of iron": ("Fe, O2", "Fe2O3", "Fe2O3"),
+    "Neutralisation": ("NaOH, HCl", "NaCl, H2O", "NaCl"),
+    "Ethanol combustion": ("C2H5OH, O2", "CO2, H2O", "CO2"),
+    "Photosynthesis": ("CO2, H2O", "C6H12O6, O2", "C6H12O6"),
+}
+
+# Column names in the exported CSV. The first six are for reading; the
+# last five carry the raw inputs so the file can be loaded back in.
+# Computed results cannot be reversed into a reaction, so they are not
+# what gets re-imported.
+MACHINE_COLUMNS = [
+    "Reactant coefficients",
+    "Product coefficients",
+    "Desired product",
+    "Reactant masses (g)",
+    "Actual yield (g)",
+]
+
+
+def encode_species(mapping):
+    """{'CH4': 1, 'O2': 2} -> 'CH4:1;O2:2'"""
+    if not mapping:
+        return ""
+    parts = []
+    for formula, value in mapping.items():
+        parts.append(f"{formula}:{value}")
+    return ";".join(parts)
+
+
+def decode_species(text, cast):
+    """'CH4:1;O2:2' -> {'CH4': 1, 'O2': 2}. Raises ValueError if malformed."""
+    result = {}
+    if text is None:
+        return result
+    text = str(text).strip()
+    if not text or text.lower() == "nan":
+        return result
+    for chunk in text.split(";"):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if ":" not in chunk:
+            raise ValueError(
+                f"'{chunk}' should look like FORMULA:NUMBER, e.g. CH4:1"
+            )
+        formula, _, value = chunk.partition(":")
+        result[formula.strip()] = cast(value.strip())
+    return result
+
 
 st.set_page_config(page_title="atomecon", page_icon="🧪")
 
@@ -27,7 +93,6 @@ st.caption(
     "no RDKit, no SMILES needed."
 )
 
-# Saved reactions live here for the length of the browser session.
 if "saved" not in st.session_state:
     st.session_state["saved"] = []
 
@@ -68,20 +133,6 @@ st.divider()
 
 st.subheader("1. Describe your reaction")
 
-# Ready-made reactions so a first-time visitor sees the tool work
-# immediately. Every one of these auto-balances - do not add an equation
-# without checking, since some have more than one valid balancing ratio
-# and Reaction.auto() will refuse them.
-EXAMPLES = {
-    "Start from an example...": None,
-    "Methane combustion": ("CH4, O2", "CO2, H2O", "CO2"),
-    "Haber process (ammonia)": ("N2, H2", "NH3", "NH3"),
-    "Rusting of iron": ("Fe, O2", "Fe2O3", "Fe2O3"),
-    "Neutralisation": ("NaOH, HCl", "NaCl, H2O", "NaCl"),
-    "Ethanol combustion": ("C2H5OH, O2", "CO2, H2O", "CO2"),
-    "Photosynthesis": ("CO2, H2O", "C6H12O6, O2", "C6H12O6"),
-}
-
 
 def load_example():
     preset = EXAMPLES[st.session_state["example_choice"]]
@@ -120,19 +171,44 @@ desired_product = st.text_input(
 
 build_clicked = st.button("Balance and analyze", type="primary")
 
+
+def split_formulas(text):
+    pieces = []
+    for piece in text.split(","):
+        cleaned = piece.strip()
+        if cleaned:
+            pieces.append(cleaned)
+    return pieces
+
+
+def note_example_label(reactant_list, product_list, desired_clean):
+    """Suggest a name if the fields still hold an untouched example.
+
+    Which product you care about does not change the reaction's identity,
+    so only the formulas are compared. A different target is noted in
+    brackets so two rows from the same equation stay tellable apart.
+    """
+    chosen = st.session_state.get("example_choice")
+    preset = EXAMPLES.get(chosen)
+    if preset is None:
+        st.session_state["example_label"] = None
+        return
+
+    same_equation = (
+        sorted(reactant_list) == sorted(split_formulas(preset[0]))
+        and sorted(product_list) == sorted(split_formulas(preset[1]))
+    )
+    if same_equation and desired_clean == preset[2]:
+        st.session_state["example_label"] = chosen
+    elif same_equation:
+        st.session_state["example_label"] = f"{chosen} ({desired_clean})"
+    else:
+        st.session_state["example_label"] = None
+
+
 if build_clicked:
-    reactant_list = []
-    for piece in reactants_text.split(","):
-        cleaned = piece.strip()
-        if cleaned:
-            reactant_list.append(cleaned)
-
-    product_list = []
-    for piece in products_text.split(","):
-        cleaned = piece.strip()
-        if cleaned:
-            product_list.append(cleaned)
-
+    reactant_list = split_formulas(reactants_text)
+    product_list = split_formulas(products_text)
     desired_clean = desired_product.strip()
 
     if not reactant_list or not product_list or not desired_clean:
@@ -151,44 +227,86 @@ if build_clicked:
                 "correspond to a real molecule."
             )
 
+        st.session_state.pop("actual_yield", None)
+        st.session_state["save_name"] = ""
+        note_example_label(reactant_list, product_list, desired_clean)
+
         try:
             rxn = Reaction.auto(reactant_list, product_list, desired_clean)
             st.session_state["reaction"] = rxn
             st.session_state["reactant_list"] = reactant_list
-            # New reaction means the old yield figure is meaningless.
-            st.session_state.pop("actual_yield", None)
+            st.session_state.pop("needs_coefficients", None)
+        except ValueError as e:
+            # Could be a genuine mistake, or an equation with more than one
+            # valid balancing ratio. Either way the user can supply
+            # coefficients by hand rather than being stuck.
+            st.session_state.pop("reaction", None)
+            st.session_state["needs_coefficients"] = {
+                "reactants": reactant_list,
+                "products": product_list,
+                "desired": desired_clean,
+                "error": str(e),
+            }
 
-            # Work out what to suggest as a name. The reaction's identity is
-            # its equation - which product you happen to care about does not
-            # change that - so only the reactants and products are compared.
-            # A different target is noted in brackets so two saved rows from
-            # the same equation stay tellable apart.
-            def same_formulas(typed, preset_text):
-                typed_parts = [p.strip() for p in typed.split(",") if p.strip()]
-                preset_parts = [p.strip() for p in preset_text.split(",") if p.strip()]
-                return sorted(typed_parts) == sorted(preset_parts)
+# --- Manual coefficients, when automatic balancing cannot decide ---------
+if "needs_coefficients" in st.session_state:
+    pending = st.session_state["needs_coefficients"]
 
-            chosen = st.session_state.get("example_choice")
-            preset = EXAMPLES.get(chosen)
-            same_equation = preset is not None and (
-                same_formulas(reactants_text, preset[0])
-                and same_formulas(products_text, preset[1])
+    st.divider()
+    st.subheader("Automatic balancing could not settle this one")
+    st.warning(pending["error"])
+    st.markdown(
+        "Some equations have more than one valid balancing ratio. That is a "
+        "real mathematical ambiguity, not a bug: the atom counts alone do "
+        "not say which one is the chemistry. Aspirin is the classic case - "
+        "`11C7H6O3 + C4H6O3 -> 9C9H8O4` balances perfectly and is complete "
+        "nonsense. Enter the coefficients yourself and the balance will be "
+        "checked."
+    )
+
+    manual_reactants = {}
+    manual_products = {}
+
+    st.markdown("**Reactants**")
+    reactant_columns = st.columns(len(pending["reactants"]))
+    for column, formula in zip(reactant_columns, pending["reactants"]):
+        manual_reactants[formula] = column.number_input(
+            to_subscripts(formula),
+            min_value=1,
+            max_value=99,
+            value=1,
+            step=1,
+            key=f"coeff_r_{formula}",
+        )
+
+    st.markdown("**Products**")
+    product_columns = st.columns(len(pending["products"]))
+    for column, formula in zip(product_columns, pending["products"]):
+        manual_products[formula] = column.number_input(
+            to_subscripts(formula),
+            min_value=1,
+            max_value=99,
+            value=1,
+            step=1,
+            key=f"coeff_p_{formula}",
+        )
+
+    if st.button("Use these coefficients"):
+        try:
+            rxn = Reaction(
+                reactants=manual_reactants,
+                products=manual_products,
+                desired_product=pending["desired"],
             )
-
-            if same_equation and desired_clean == preset[2]:
-                st.session_state["example_label"] = chosen
-            elif same_equation:
-                st.session_state["example_label"] = f"{chosen} ({desired_clean})"
-            else:
-                st.session_state["example_label"] = None
-
-            # Leave the box empty so the suggestion shows as a grey
-            # placeholder rather than text the user has to delete.
-            st.session_state["save_name"] = ""
+            st.session_state["reaction"] = rxn
+            st.session_state["reactant_list"] = pending["reactants"]
+            st.session_state.pop("needs_coefficients", None)
+            st.session_state.pop("actual_yield", None)
+            st.rerun()
         except ValueError as e:
             st.error(str(e))
-            st.session_state.pop("reaction", None)
 
+# --- The analysis -------------------------------------------------------
 if "reaction" in st.session_state:
     rxn = st.session_state["reaction"]
 
@@ -263,34 +381,47 @@ if "reaction" in st.session_state:
         "actually ran the reaction and want E-factor / yield too."
     )
 
-    # --- Reactant masses -------------------------------------------------
+    scale_name = st.selectbox(
+        "Roughly how much are you working with?",
+        list(MASS_SCALES.keys()),
+        index=list(MASS_SCALES.keys()).index(DEFAULT_SCALE),
+        key="mass_scale",
+    )
+    scale_min, scale_max, scale_step = MASS_SCALES[scale_name]
+
     reactant_masses = {}
     for formula in st.session_state["reactant_list"]:
+        slider_key = f"mass_{formula}"
+        # Switching scale can leave a stored value outside the new range,
+        # which Streamlit rejects. Pull it back in first.
+        stored = st.session_state.get(slider_key)
+        if stored is not None:
+            if stored < scale_min:
+                st.session_state[slider_key] = scale_min
+            elif stored > scale_max:
+                st.session_state[slider_key] = scale_max
+
         reactant_masses[formula] = st.slider(
-            f"Grams of {formula} used",
-            min_value=MIN_REACTANT_G,
-            max_value=MAX_REACTANT_G,
-            value=1.0,
-            step=MASS_STEP_G,
-            key=f"mass_{formula}",
+            f"Grams of {to_subscripts(formula)} used",
+            min_value=scale_min,
+            max_value=scale_max,
+            value=min(max(1.0, scale_min), scale_max),
+            step=scale_step,
+            key=slider_key,
         )
 
-    # --- The ceiling, recomputed from whatever the sliders now say -------
     theoretical = rxn.theoretical_yield_g(reactant_masses)
     limiting = rxn.limiting_reactant(reactant_masses)
 
-    # Never let the max collapse to zero, or the slider becomes invalid.
     max_yield = round(theoretical, 2)
     if max_yield < 0.01:
         max_yield = 0.01
 
-    # If the reactant sliders moved down, an older yield value may now sit
-    # above the new ceiling. Pull it back before drawing the slider.
     if st.session_state.get("actual_yield", 0.0) > max_yield:
         st.session_state["actual_yield"] = max_yield
 
     st.slider(
-        f"Grams of {rxn.desired_product} actually obtained",
+        f"Grams of {to_subscripts(rxn.desired_product)} actually obtained",
         min_value=0.0,
         max_value=max_yield,
         step=0.01,
@@ -299,12 +430,12 @@ if "reaction" in st.session_state:
     actual_yield = st.session_state["actual_yield"]
 
     st.caption(
-        f"Capped at {max_yield:.2f} g - the theoretical maximum. **{limiting}** "
-        "runs out first, so it sets the ceiling. You cannot isolate more "
-        "product than the atoms you started with can build."
+        f"Capped at {max_yield:.2f} g - the theoretical maximum. "
+        f"**{to_subscripts(limiting)}** runs out first, so it sets the "
+        "ceiling. You cannot isolate more product than the atoms you "
+        "started with can build."
     )
 
-    # --- Live report -----------------------------------------------------
     has_lab_data = actual_yield > 0
 
     if not has_lab_data:
@@ -341,7 +472,6 @@ if "reaction" in st.session_state:
 
         st.code(rxn.summary_table(reactant_masses, actual_yield))
 
-    # --- Save to the comparison log --------------------------------------
     st.divider()
     st.subheader("5. Save this reaction to compare")
     st.caption(
@@ -364,26 +494,24 @@ if "reaction" in st.session_state:
         cleaned_name = save_name.strip()
         if not cleaned_name:
             cleaned_name = suggested_name
-        entry = {
+        st.session_state["saved"].append({
             "name": cleaned_name,
             "reaction": rxn,
             "reactant_masses_g": dict(reactant_masses) if has_lab_data else None,
             "actual_yield_g": actual_yield if has_lab_data else None,
-        }
-        st.session_state["saved"].append(entry)
-        if has_lab_data:
-            st.success(f"Saved '{cleaned_name}' with lab data.")
-        else:
-            st.success(
-                f"Saved '{cleaned_name}'. No lab data, so it will show "
-                "atom economy but no grade."
-            )
+        })
+        st.success(f"Saved '{cleaned_name}'.")
 
-# --- The comparison table, shown whenever anything is saved --------------
-if st.session_state["saved"]:
-    st.divider()
-    st.subheader("6. Comparison")
+# --- Comparison, export, import -----------------------------------------
+st.divider()
+st.subheader("6. Comparison")
 
+if not st.session_state["saved"]:
+    st.caption(
+        "Nothing saved yet. Analyse a reaction above and save it, or load a "
+        "comparison you exported earlier."
+    )
+else:
     log = ReactionLog()
     for entry in st.session_state["saved"]:
         log.add(
@@ -446,15 +574,46 @@ if st.session_state["saved"]:
 
     st.caption(
         f"{len(log)} reaction(s), greenest first. Blank cells mean no lab "
-        "data was saved for that reaction. This list lives in your browser "
-        "session only, so refreshing the page clears it. Download it if you "
-        "want to keep it."
+        "data was saved for that reaction."
     )
+
+    # The export carries the raw inputs alongside the readable columns,
+    # because computed results cannot be turned back into a reaction.
+    export_rows = []
+    for entry in st.session_state["saved"]:
+        entry_reaction = entry["reaction"]
+        readable = None
+        for record in log.to_records():
+            if record["name"] == entry["name"]:
+                readable = record
+                break
+
+        export_rows.append({
+            "Name": entry["name"],
+            "Reaction": entry_reaction.pretty_equation(),
+            "Atom economy": f"{entry_reaction.atom_economy():.1f}%",
+            "Grade": (readable or {}).get("grade_letter") or "",
+            "E-factor": (
+                "" if entry["actual_yield_g"] is None
+                else f"{entry_reaction.e_factor(entry['reactant_masses_g'], entry['actual_yield_g']):.2f}"
+            ),
+            "Yield": (
+                "" if entry["actual_yield_g"] is None
+                else f"{entry_reaction.percent_yield(entry['reactant_masses_g'], entry['actual_yield_g']):.1f}%"
+            ),
+            "Reactant coefficients": encode_species(entry_reaction.reactants),
+            "Product coefficients": encode_species(entry_reaction.products),
+            "Desired product": entry_reaction.desired_product,
+            "Reactant masses (g)": encode_species(entry["reactant_masses_g"] or {}),
+            "Actual yield (g)": (
+                "" if entry["actual_yield_g"] is None else entry["actual_yield_g"]
+            ),
+        })
 
     # utf-8-sig writes a byte-order mark, which is what tells Excel on
     # Windows to read the file as UTF-8. Without it the subscripts and the
     # arrow arrive as mojibake.
-    csv_bytes = pd.DataFrame(display_rows).to_csv(index=False).encode("utf-8-sig")
+    csv_bytes = pd.DataFrame(export_rows).to_csv(index=False).encode("utf-8-sig")
 
     st.download_button(
         "Download as CSV",
@@ -483,6 +642,82 @@ if st.session_state["saved"]:
     if st.button("Clear all"):
         st.session_state["saved"] = []
         st.rerun()
+
+with st.expander("Load a comparison from a CSV"):
+    st.markdown(
+        "Upload a file this app exported. Alongside the readable columns it "
+        "stores the raw inputs, which is what gets loaded back - the "
+        "computed results are recalculated rather than trusted."
+    )
+    st.markdown("Required columns: **Name**, plus " + ", ".join(f"**{c}**" for c in MACHINE_COLUMNS))
+    st.caption(
+        "Coefficients and masses use FORMULA:NUMBER separated by "
+        "semicolons, e.g. `CH4:1;O2:2`. Leave the mass and yield columns "
+        "empty for a reaction with no lab data."
+    )
+
+    uploaded = st.file_uploader("Choose a CSV", type=["csv"], key="csv_upload")
+
+    if uploaded is not None and st.button("Load reactions"):
+        try:
+            frame = pd.read_csv(uploaded, encoding="utf-8-sig")
+        except Exception as e:
+            frame = None
+            st.error(f"Could not read that file: {e}")
+
+        if frame is not None:
+            missing_columns = []
+            for column in ["Name"] + MACHINE_COLUMNS:
+                if column not in frame.columns:
+                    missing_columns.append(column)
+
+            if missing_columns:
+                st.error(
+                    "That CSV is missing these columns: "
+                    + ", ".join(missing_columns)
+                    + ". Export a file from this app to see the expected "
+                    "format."
+                )
+            else:
+                loaded = 0
+                problems = []
+                for position, row in frame.iterrows():
+                    line = position + 2  # +1 for zero-index, +1 for header
+                    try:
+                        reactants = decode_species(row["Reactant coefficients"], int)
+                        products = decode_species(row["Product coefficients"], int)
+                        masses = decode_species(row["Reactant masses (g)"], float)
+
+                        raw_yield = row["Actual yield (g)"]
+                        if pd.isna(raw_yield) or str(raw_yield).strip() == "":
+                            actual = None
+                            masses = None
+                        else:
+                            actual = float(raw_yield)
+
+                        restored = Reaction(
+                            reactants=reactants,
+                            products=products,
+                            desired_product=str(row["Desired product"]).strip(),
+                        )
+                        st.session_state["saved"].append({
+                            "name": str(row["Name"]),
+                            "reaction": restored,
+                            "reactant_masses_g": masses,
+                            "actual_yield_g": actual,
+                        })
+                        loaded += 1
+                    except (ValueError, KeyError, TypeError) as e:
+                        problems.append(f"Row {line}: {e}")
+
+                if loaded:
+                    st.success(f"Loaded {loaded} reaction(s).")
+                if problems:
+                    st.warning(
+                        "These rows were skipped:\n\n- " + "\n- ".join(problems)
+                    )
+                if loaded:
+                    st.rerun()
 
 st.divider()
 st.caption(
