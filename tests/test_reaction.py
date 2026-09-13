@@ -304,3 +304,43 @@ def test_breakdown_total_is_the_sum_of_its_parts():
     parts = rxn.atom_economy_breakdown()
     summed = sum(r["mass"] for r in parts["reactants"])
     assert parts["total_reactant_mass"] == pytest.approx(summed, abs=1e-9)
+
+
+def test_grade_letter_matches_green_grade():
+    """The reference diagram is drawn from grade_letter, so if the two ever
+    disagree the app would show a rule the library does not follow."""
+    from atomecon.reaction import grade_letter
+
+    rxn = Reaction.auto(["CH4", "O2"], ["CO2", "H2O"], desired_product="CO2")
+    masses = {"CH4": 60.6, "O2": 58.1}
+    actual = 38.8
+
+    ae_points = rxn._points_for_atom_economy(rxn.atom_economy())
+    waste_points = rxn._points_for_avoidable_waste(
+        rxn.excess_e_factor(masses, actual)
+    )
+    assert rxn.green_grade(masses, actual).startswith(
+        grade_letter(ae_points, waste_points)
+    )
+
+
+def test_grade_grid_covers_every_score_pair():
+    from atomecon.reaction import grade_letter
+
+    letters = set()
+    for ae_points in range(5):
+        for waste_points in range(5):
+            letters.add(grade_letter(ae_points, waste_points))
+    assert letters == {"A", "B", "C", "D", "F"}
+
+
+def test_bands_are_ordered_high_to_low():
+    """The app prints range labels by pairing each band with the one before
+    it, which only reads correctly if they descend."""
+    from atomecon.reaction import ATOM_ECONOMY_BANDS, AVOIDABLE_WASTE_BANDS
+
+    ae_thresholds = [t for t, _ in ATOM_ECONOMY_BANDS]
+    assert ae_thresholds == sorted(ae_thresholds, reverse=True)
+
+    waste_thresholds = [t for t, _ in AVOIDABLE_WASTE_BANDS]
+    assert waste_thresholds == sorted(waste_thresholds)

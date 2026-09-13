@@ -15,6 +15,11 @@ import streamlit as st
 
 from atomecon import Reaction, ReactionLog, is_formula_plausible, to_subscripts
 from atomecon.balance import possible_balances
+from atomecon.reaction import (
+    ATOM_ECONOMY_BANDS,
+    AVOIDABLE_WASTE_BANDS,
+    grade_letter,
+)
 
 # Upper limits for the reactant sliders, in grams. A single fixed range
 # cannot serve both microscale lab work and industrial comparisons, so the
@@ -530,6 +535,98 @@ if "reaction" in st.session_state:
             )
 
         st.code(rxn.summary_table(reactant_masses, actual_yield))
+
+        with st.expander("How this grade was worked out"):
+            st.markdown(
+                "The grade is **our own scoring rule, not a scientific "
+                "standard**. Two halves, scored 0 to 4 each, then averaged."
+            )
+
+            band_css = """
+            <style>
+            .grade-bands { border-collapse: collapse; margin-bottom: 0.4rem; }
+            .grade-bands td, .grade-bands th {
+                padding: 0.3rem 0.7rem; text-align: center;
+                border-bottom: 1px solid rgba(140,140,140,0.25);
+            }
+            .grade-bands th { font-weight: 600; }
+            .grade-grid { border-collapse: collapse; width: 100%; }
+            .grade-grid td, .grade-grid th {
+                padding: 0.4rem; text-align: center; font-size: 0.85rem;
+            }
+            .grade-grid th { font-weight: 600; opacity: 0.85; }
+            .grade-grid td.cell { color: #fff; font-weight: 700; border-radius: 3px; }
+            .gA { background: rgba(46,125,50,0.92); }
+            .gB { background: rgba(104,159,56,0.88); }
+            .gC { background: rgba(230,150,20,0.88); }
+            .gD { background: rgba(220,100,10,0.88); }
+            .gF { background: rgba(198,40,40,0.92); }
+            .grade-you { outline: 3px solid #fff; }
+            </style>
+            """
+
+            ae_rows = ""
+            previous = None
+            for threshold, points in ATOM_ECONOMY_BANDS:
+                if previous is None:
+                    label = f"{threshold}% and above"
+                else:
+                    label = f"{threshold}% to {previous}%"
+                ae_rows += f"<tr><td>{label}</td><td><b>{points}</b></td></tr>"
+                previous = threshold
+            ae_rows += f"<tr><td>below {previous}%</td><td><b>0</b></td></tr>"
+
+            waste_rows = ""
+            previous = None
+            for threshold, points in AVOIDABLE_WASTE_BANDS:
+                if previous is None:
+                    label = f"{threshold} or less"
+                else:
+                    label = f"{previous} to {threshold}"
+                waste_rows += f"<tr><td>{label}</td><td><b>{points}</b></td></tr>"
+                previous = threshold
+            waste_rows += f"<tr><td>above {previous}</td><td><b>0</b></td></tr>"
+
+            band_html = (
+                band_css
+                + "<b>Atom economy</b> - the route you picked"
+                + f"<table class='grade-bands'><tr><th>Value</th><th>Points</th></tr>{ae_rows}</table>"
+                + "<b>Avoidable waste</b> - E-factor above the floor, i.e. how you ran it"
+                + f"<table class='grade-bands'><tr><th>Value</th><th>Points</th></tr>{waste_rows}</table>"
+            )
+            st.markdown(band_html, unsafe_allow_html=True)
+
+            # Where this reaction actually landed, so the grid is not abstract.
+            your_ae_points = rxn._points_for_atom_economy(rxn.atom_economy())
+            your_waste_points = rxn._points_for_avoidable_waste(
+                rxn.excess_e_factor(reactant_masses, actual_yield)
+            )
+
+            grid = "<table class='grade-grid'><tr><th></th>"
+            for threshold, points in AVOIDABLE_WASTE_BANDS:
+                grid += f"<th>waste<br>{points}</th>"
+            grid += "<th>waste<br>0</th></tr>"
+
+            waste_scores = [p for _, p in AVOIDABLE_WASTE_BANDS] + [0]
+            ae_scores = [p for _, p in ATOM_ECONOMY_BANDS] + [0]
+
+            for ae_points in ae_scores:
+                grid += f"<tr><th>economy {ae_points}</th>"
+                for waste_points in waste_scores:
+                    letter = grade_letter(ae_points, waste_points)
+                    marker = ""
+                    if ae_points == your_ae_points and waste_points == your_waste_points:
+                        marker = " grade-you"
+                    grid += f"<td class='cell g{letter}{marker}'>{letter}</td>"
+                grid += "</tr>"
+            grid += "</table>"
+
+            st.markdown("**Every combination, and where you landed:**")
+            st.markdown(band_css + grid, unsafe_allow_html=True)
+            st.caption(
+                f"You scored {your_ae_points} on atom economy and "
+                f"{your_waste_points} on avoidable waste - the outlined cell."
+            )
 
     st.divider()
     st.subheader("5. Save this reaction to compare")

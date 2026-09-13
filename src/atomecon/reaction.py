@@ -24,6 +24,28 @@ from typing import Dict, List, Optional
 from .formula import parse_formula, molar_mass, to_subscripts
 from .balance import balance_equation
 
+# Scoring bands for green_grade(). Module-level so a caller can render the
+# rule for the user instead of only showing the verdict - and so the two
+# can never drift apart.
+#
+# These thresholds are a judgement call, not a measured standard. Sheldon's
+# published E-factor figures describe TOTAL waste by industry; these apply
+# to AVOIDABLE waste, which is a different quantity, so his numbers are at
+# best a loose starting point.
+ATOM_ECONOMY_BANDS = [(90, 4), (75, 3), (60, 2), (40, 1)]      # at least
+AVOIDABLE_WASTE_BANDS = [(0.5, 4), (2, 3), (5, 2), (15, 1)]    # at most
+GRADE_THRESHOLDS = [(3.5, "A"), (2.5, "B"), (1.5, "C"), (0.5, "D")]
+
+
+def grade_letter(atom_economy_points: int, avoidable_waste_points: int) -> str:
+    """The letter for a pair of scores. Shared by green_grade and any
+    caller that wants to draw the full grid."""
+    average = (atom_economy_points + avoidable_waste_points) / 2
+    for threshold, letter in GRADE_THRESHOLDS:
+        if average >= threshold:
+            return letter
+    return "F"
+
 
 class Reaction:
     @classmethod
@@ -306,6 +328,18 @@ class Reaction:
             excess = 0.0
         return excess
 
+    def _points_for_atom_economy(self, ae: float) -> int:
+        for threshold, points in ATOM_ECONOMY_BANDS:
+            if ae >= threshold:
+                return points
+        return 0
+
+    def _points_for_avoidable_waste(self, excess: float) -> int:
+        for threshold, points in AVOIDABLE_WASTE_BANDS:
+            if excess <= threshold:
+                return points
+        return 0
+
     def green_grade(
         self, reactant_masses_g: Dict[str, float], actual_yield_g: float
     ) -> str:
@@ -322,47 +356,18 @@ class Reaction:
             its atom economy.
 
         This is a transparent scoring rule of our own, not a scientific
-        standard.
+        standard. The bands are module-level constants so a caller can
+        show the user the rule instead of only the verdict.
         """
         ae = self.atom_economy()
         ef = self.e_factor(reactant_masses_g, actual_yield_g)
         floor = self.e_factor_floor()
         excess = self.excess_e_factor(reactant_masses_g, actual_yield_g)
 
-        if ae >= 90:
-            ae_points = 4
-        elif ae >= 75:
-            ae_points = 3
-        elif ae >= 60:
-            ae_points = 2
-        elif ae >= 40:
-            ae_points = 1
-        else:
-            ae_points = 0
+        ae_points = self._points_for_atom_economy(ae)
+        ef_points = self._points_for_avoidable_waste(excess)
 
-        if excess <= 0.5:
-            ef_points = 4
-        elif excess <= 2:
-            ef_points = 3
-        elif excess <= 5:
-            ef_points = 2
-        elif excess <= 15:
-            ef_points = 1
-        else:
-            ef_points = 0
-
-        average_points = (ae_points + ef_points) / 2
-
-        if average_points >= 3.5:
-            letter = "A"
-        elif average_points >= 2.5:
-            letter = "B"
-        elif average_points >= 1.5:
-            letter = "C"
-        elif average_points >= 0.5:
-            letter = "D"
-        else:
-            letter = "F"
+        letter = grade_letter(ae_points, ef_points)
 
         return (
             f"{letter}  (Atom economy: {ae:.0f}% | "
