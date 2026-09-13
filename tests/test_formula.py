@@ -71,3 +71,40 @@ def test_to_subscripts_leaves_letters_and_brackets_alone():
     from atomecon import to_subscripts
     assert to_subscripts("Ca(OH)2") == "Ca(OH)\u2082"
     assert to_subscripts("NaCl") == "NaCl"
+
+
+def test_square_brackets_for_coordination_compounds():
+    """K3[Fe(CN)6] is how this is conventionally written."""
+    assert parse_formula("K3[Fe(CN)6]") == {"K": 3, "Fe": 1, "C": 6, "N": 6}
+
+
+def test_square_brackets_with_a_multiplier():
+    assert parse_formula("Fe3[Fe(CN)6]2") == {"Fe": 5, "C": 12, "N": 12}
+
+
+def test_square_and_round_brackets_agree():
+    assert parse_formula("Fe3[Fe(CN)6]2") == parse_formula("Fe3(Fe(CN)6)2")
+
+
+def test_leading_bracket_group():
+    assert parse_formula("[Cu(NH3)4]SO4") == {
+        "Cu": 1, "N": 4, "H": 12, "S": 1, "O": 4
+    }
+
+
+def test_curly_brackets_are_accepted():
+    assert parse_formula("K3{Fe(CN)6}") == {"K": 3, "Fe": 1, "C": 6, "N": 6}
+
+
+def test_mismatched_bracket_types_are_rejected():
+    with pytest.raises(ValueError, match="Mismatched"):
+        parse_formula("K3(Fe(CN)6]")
+
+
+def test_unclosed_square_bracket_is_rejected():
+    with pytest.raises(ValueError):
+        parse_formula("K3[Fe(CN)6")
+
+
+def test_molar_mass_of_potassium_ferricyanide():
+    assert molar_mass("K3[Fe(CN)6]") == pytest.approx(329.25, abs=0.1)

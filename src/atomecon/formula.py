@@ -36,17 +36,25 @@ def parse_formula(formula: str) -> Dict[str, int]:
         raise ValueError("Formula cannot be empty.")
 
     stack = [dict()]
+    # Coordination compounds are conventionally written with square
+    # brackets - K3[Fe(CN)6] - and nested groups sometimes use curly ones,
+    # so all three are accepted. The opener is remembered so a mismatched
+    # pair is caught rather than silently treated as a group.
+    opening_brackets = {"(": ")", "[": "]", "{": "}"}
+    closing_brackets = {")": "(", "]": "[", "}": "{"}
+    bracket_stack = []
     i = 0
     n = len(formula)
 
     while i < n:
         char = formula[i]
 
-        if char == "(":
+        if char in opening_brackets:
             stack.append({})
+            bracket_stack.append(char)
             i += 1
 
-        elif char == ")":
+        elif char in closing_brackets:
             i += 1
             start = i
             while i < n and formula[i].isdigit():
@@ -54,7 +62,15 @@ def parse_formula(formula: str) -> Dict[str, int]:
             multiplier = int(formula[start:i]) if i > start else 1
 
             if len(stack) < 2:
-                raise ValueError(f"Unbalanced parentheses in formula '{formula}'.")
+                raise ValueError(f"Unbalanced brackets in formula '{formula}'.")
+
+            expected_opener = closing_brackets[char]
+            if bracket_stack[-1] != expected_opener:
+                raise ValueError(
+                    f"Mismatched brackets in formula '{formula}': "
+                    f"'{bracket_stack[-1]}' is closed by '{char}'."
+                )
+            bracket_stack.pop()
 
             group = stack.pop()
             for element, count in group.items():
@@ -88,7 +104,7 @@ def parse_formula(formula: str) -> Dict[str, int]:
             )
 
     if len(stack) != 1:
-        raise ValueError(f"Unbalanced parentheses in formula '{formula}'.")
+        raise ValueError(f"Unbalanced brackets in formula '{formula}'.")
 
     return stack[0]
 

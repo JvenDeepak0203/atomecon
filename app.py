@@ -13,7 +13,13 @@ import math
 import pandas as pd
 import streamlit as st
 
-from atomecon import Reaction, ReactionLog, is_formula_plausible, to_subscripts
+from atomecon import (
+    Reaction,
+    ReactionLog,
+    is_formula_plausible,
+    parse_formula,
+    to_subscripts,
+)
 from atomecon.balance import possible_balances
 from atomecon.reaction import (
     ATOM_ECONOMY_BANDS,
@@ -249,6 +255,25 @@ if build_clicked:
     if not reactant_list or not product_list or not desired_clean:
         st.error("Please fill in reactants, products, and the desired product.")
     else:
+        # Check every formula parses before doing anything else. Without
+        # this, an unparseable formula raises out of the plausibility check
+        # and the whole page dies with a traceback.
+        formula_problems = []
+        for formula in reactant_list + product_list:
+            try:
+                parse_formula(formula)
+            except ValueError as e:
+                formula_problems.append(str(e))
+
+        if formula_problems:
+            st.error(
+                "These formulas could not be read:\n\n- "
+                + "\n- ".join(formula_problems)
+            )
+            st.session_state.pop("reaction", None)
+            st.session_state.pop("needs_coefficients", None)
+            st.stop()
+
         implausible_formulas = []
         for formula in reactant_list + product_list:
             if not is_formula_plausible(formula):
