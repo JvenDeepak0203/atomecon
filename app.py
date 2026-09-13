@@ -131,44 +131,69 @@ if "saved" not in st.session_state:
 
 with st.expander("New here? What these numbers mean"):
     st.markdown(
-        """
-**Atom economy** asks: of all the atoms you put in, what fraction end up
-in the product you actually wanted?
-
-$$\\text{Atom economy} = \\frac{\\text{mass of desired product}}{\\text{total mass of reactants}} \\times 100$$
-
-It depends only on the balanced equation, so it is the same number for
-everyone who ever runs that reaction. You cannot improve it with better
-technique - only by choosing a different route to the same product.
-
-**Percent yield** is the opposite kind of number. It compares what you
-actually isolated against the most the equation allows, so it measures
-*you*: your technique, your losses, your conversion.
-
-The two are independent, and that trips people up. A reaction can hit
-100% yield and still be wasteful, if the equation sends half its atoms
-into a by-product. Burning methane is exactly that - 55% atom economy,
-because every single run discards the water.
-
-**E-factor** counts grams of waste per gram of product. Lower is better;
-0 would mean nothing wasted at all.
-
-$$\\text{E-factor} = \\frac{\\text{total mass you put in} - \\text{mass of product you kept}}{\\text{mass of product you kept}}$$
-
-Everything that is not your product counts as waste: by-products, leftover
-reagents, whatever stayed on the glassware.
-
-**The floor.** E-factor cannot go below what atom economy permits. Even a
-flawless run discards whatever the equation sends elsewhere, so the best
-achievable E-factor is:
-
-$$\\text{E-factor floor} = \\frac{100}{\\text{atom economy}} - 1$$
-
-A reaction at 50% atom economy can never beat 1.0, however carefully it is
-run. This app shows you that floor and grades the waste *above* it - the
-part you could actually have avoided.
-        """
+        "**Atom economy** judges the reaction you picked. **Percent yield** "
+        "judges how you ran it. They are independent, and that is the whole "
+        "point."
     )
+
+    tab_economy, tab_yield, tab_waste, tab_floor = st.tabs(
+        ["Atom economy", "Percent yield", "E-factor", "The floor"]
+    )
+
+    with tab_economy:
+        st.markdown(
+            "Of all the atoms you put in, what fraction end up in the "
+            "product you wanted?"
+        )
+        st.latex(
+            r"\frac{\text{mass of desired product}}"
+            r"{\text{total mass of reactants}} \times 100"
+        )
+        st.markdown(
+            "It comes from the balanced equation alone, so it is the same "
+            "number for everyone who ever runs that reaction. No lab "
+            "technique changes it - only a different route does."
+        )
+
+    with tab_yield:
+        st.markdown(
+            "How much you actually isolated, against the most the equation "
+            "allows from the masses you started with."
+        )
+        st.latex(
+            r"\frac{\text{what you got}}{\text{the most you could get}} "
+            r"\times 100"
+        )
+        st.markdown(
+            "This one is about you: your technique, your losses, your "
+            "conversion. A reaction can hit 100% yield and still be "
+            "wasteful, if the equation sends half its atoms into a "
+            "by-product. Burning methane is exactly that."
+        )
+
+    with tab_waste:
+        st.markdown("Grams of waste per gram of product. Lower is better.")
+        st.latex(
+            r"\frac{\text{total mass in} - \text{mass of product}}"
+            r"{\text{mass of product}}"
+        )
+        st.markdown(
+            "Everything that is not your product counts: by-products, "
+            "leftover reagents, whatever stayed on the glassware."
+        )
+
+    with tab_floor:
+        st.markdown(
+            "E-factor cannot go below what atom economy permits. Even a "
+            "flawless run discards whatever the equation sends elsewhere."
+        )
+        st.latex(r"\frac{100}{\text{atom economy}} - 1")
+        st.markdown(
+            "A reaction at 50% atom economy can never beat 1.0, however "
+            "carefully it is run. This app shows you that floor and grades "
+            "the waste *above* it - the part you could actually have "
+            "avoided."
+        )
 
 st.divider()
 
