@@ -161,3 +161,181 @@ def _solve_null_space(matrix, num_species):
 
 def _lcm(a, b):
     return a * b // math.gcd(a, b)
+
+
+def possible_balances(
+    reactant_formulas: List[str],
+    product_formulas: List[str],
+    search_range: int = 6,
+    max_solutions: int = 12,
+) -> List[Tuple[Dict[str, int], Dict[str, int]]]:
+    """Find simple whole-number balancings, simplest first.
+
+    When the solution space has more than one dimension there are
+    INFINITELY many valid balancings, so this cannot return all of them
+    and does not claim to. It returns the ones built from small
+    combinations of the solution basis - which is where the chemically
+    meaningful answer lives, if there is one.
+
+    Only solutions where every species has a coefficient of 1 or more are
+    returned. A zero would mean that species takes no part, which is a
+    different equation from the one that was asked about.
+
+    Ordering is by total coefficient size, so the tidiest equation comes
+    first. That is a presentation choice, not a chemical judgement: the
+    atom counts cannot tell you which balancing is the real reaction.
+    """
+    species = reactant_formulas + product_formulas
+    num_species = len(species)
+    num_reactants = len(reactant_formulas)
+
+    element_counts_per_species = []
+    all_elements = []
+    for formula in species:
+        counts = parse_formula(formula)
+        element_counts_per_species.append(counts)
+        for element in counts:
+            if element not in all_elements:
+                all_elements.append(element)
+
+    matrix = []
+    for element in all_elements:
+        row = []
+        for i, counts in enumerate(element_counts_per_species):
+            count = counts.get(element, 0)
+            if i >= num_reactants:
+                count = -count
+            row.append(Fraction(count))
+        matrix.append(row)
+
+    basis = _null_space_basis(matrix, num_species)
+    if not basis:
+        return []
+
+    candidates = []
+    seen = []
+    for multipliers in _integer_combinations(len(basis), search_range):
+        vector = [Fraction(0)] * num_species
+        for weight, basis_vector in zip(multipliers, basis):
+            for i in range(num_species):
+                vector[i] = vector[i] + weight * basis_vector[i]
+
+        whole = _to_smallest_whole_numbers(vector)
+        if whole is None:
+            continue
+        if whole in seen:
+            continue
+        seen.append(whole)
+        candidates.append(whole)
+
+    candidates.sort(key=lambda v: (sum(v), max(v)))
+
+    results = []
+    for coefficients in candidates[:max_solutions]:
+        reactant_coeffs = {}
+        for i in range(num_reactants):
+            reactant_coeffs[reactant_formulas[i]] = coefficients[i]
+
+        product_coeffs = {}
+        for i in range(num_reactants, num_species):
+            product_coeffs[product_formulas[i - num_reactants]] = coefficients[i]
+
+        results.append((reactant_coeffs, product_coeffs))
+
+    return results
+
+
+def _null_space_basis(matrix, num_species):
+    """Row reduce, then read off one basis vector per free column."""
+    working = []
+    for row in matrix:
+        working.append(list(row))
+
+    pivot_columns = []
+    current_row = 0
+    for col in range(num_species):
+        pivot_row = None
+        for r in range(current_row, len(working)):
+            if working[r][col] != 0:
+                pivot_row = r
+                break
+        if pivot_row is None:
+            continue
+
+        working[current_row], working[pivot_row] = (
+            working[pivot_row], working[current_row]
+        )
+
+        pivot_value = working[current_row][col]
+        working[current_row] = [x / pivot_value for x in working[current_row]]
+
+        for r in range(len(working)):
+            if r != current_row and working[r][col] != 0:
+                factor = working[r][col]
+                working[r] = [
+                    a - factor * b for a, b in zip(working[r], working[current_row])
+                ]
+
+        pivot_columns.append(col)
+        current_row = current_row + 1
+
+    free_columns = []
+    for col in range(num_species):
+        if col not in pivot_columns:
+            free_columns.append(col)
+
+    basis = []
+    for free_col in free_columns:
+        vector = [Fraction(0)] * num_species
+        vector[free_col] = Fraction(1)
+        for row_index, pivot_col in enumerate(pivot_columns):
+            vector[pivot_col] = -working[row_index][free_col]
+        basis.append(vector)
+
+    return basis
+
+
+def _integer_combinations(count, search_range):
+    """Every tuple of `count` integers in [-search_range, search_range]."""
+    if count == 0:
+        return []
+
+    values = list(range(-search_range, search_range + 1))
+    combinations = [[]]
+    for _ in range(count):
+        extended = []
+        for partial in combinations:
+            for value in values:
+                extended.append(partial + [value])
+        combinations = extended
+
+    result = []
+    for combination in combinations:
+        if any(value != 0 for value in combination):
+            result.append(combination)
+    return result
+
+
+def _to_smallest_whole_numbers(vector):
+    """Scale to positive whole numbers, or return None if impossible."""
+    denominator_lcm = 1
+    for value in vector:
+        denominator_lcm = _lcm(denominator_lcm, value.denominator)
+
+    scaled = []
+    for value in vector:
+        scaled.append(int(value * denominator_lcm))
+
+    if all(x < 0 for x in scaled):
+        scaled = [-x for x in scaled]
+
+    if any(x <= 0 for x in scaled):
+        return None
+
+    divisor = 0
+    for x in scaled:
+        divisor = math.gcd(divisor, x)
+    if divisor > 1:
+        scaled = [x // divisor for x in scaled]
+
+    return tuple(scaled)

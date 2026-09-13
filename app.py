@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 
 from atomecon import Reaction, ReactionLog, is_formula_plausible, to_subscripts
+from atomecon.balance import possible_balances
 
 # Upper limits for the reactant sliders, in grams. A single fixed range
 # cannot serve both microscale lab work and industrial comparisons, so the
@@ -27,8 +28,8 @@ MASS_SCALES = {
     "Up to 1 kg": 1000.0,
 }
 DEFAULT_SCALE = "Up to 100 g"
-MASS_MIN_G = 0.1
-MASS_STEP_G = 0.1
+MASS_MIN_G = 0.01
+MASS_STEP_G = 0.01
 
 # Ready-made reactions so a first-time visitor sees the tool work
 # immediately. Every one of these auto-balances - do not add an equation
@@ -257,56 +258,106 @@ if "needs_coefficients" in st.session_state:
     st.divider()
     st.subheader("Automatic balancing could not settle this one")
     st.warning(pending["error"])
-    st.markdown(
-        "Some equations have more than one valid balancing ratio. That is a "
-        "real mathematical ambiguity, not a bug: the atom counts alone do "
-        "not say which one is the chemistry. Aspirin is the classic case - "
-        "`11C7H6O3 + C4H6O3 -> 9C9H8O4` balances perfectly and is complete "
-        "nonsense. Enter the coefficients yourself and the balance will be "
-        "checked."
-    )
 
-    manual_reactants = {}
-    manual_products = {}
+    try:
+        options = possible_balances(pending["reactants"], pending["products"])
+    except ValueError:
+        options = []
 
-    st.markdown("**Reactants**")
-    reactant_columns = st.columns(len(pending["reactants"]))
-    for column, formula in zip(reactant_columns, pending["reactants"]):
-        manual_reactants[formula] = column.number_input(
-            to_subscripts(formula),
-            min_value=1,
-            max_value=99,
-            value=1,
-            step=1,
-            key=f"coeff_r_{formula}",
+    if options:
+        st.markdown(
+            "This equation has **more than one** valid balancing, and the "
+            "atom counts alone cannot say which is the real chemistry. "
+            "Every option below balances perfectly. Only one of them is a "
+            "reaction that happens."
         )
 
-    st.markdown("**Products**")
-    product_columns = st.columns(len(pending["products"]))
-    for column, formula in zip(product_columns, pending["products"]):
-        manual_products[formula] = column.number_input(
-            to_subscripts(formula),
-            min_value=1,
-            max_value=99,
-            value=1,
-            step=1,
-            key=f"coeff_p_{formula}",
-        )
-
-    if st.button("Use these coefficients"):
-        try:
-            rxn = Reaction(
-                reactants=manual_reactants,
-                products=manual_products,
+        labelled = {}
+        for reactants, products in options:
+            preview = Reaction(
+                reactants=reactants,
+                products=products,
                 desired_product=pending["desired"],
+                allow_unbalanced=True,
             )
-            st.session_state["reaction"] = rxn
-            st.session_state["reactant_list"] = pending["reactants"]
-            st.session_state.pop("needs_coefficients", None)
-            st.session_state.pop("actual_yield", None)
-            st.rerun()
-        except ValueError as e:
-            st.error(str(e))
+            labelled[preview.pretty_equation()] = (reactants, products)
+
+        chosen_label = st.radio(
+            "Which one is your reaction?",
+            list(labelled.keys()),
+            key="balance_choice",
+        )
+        st.caption(
+            "Listed simplest first. There are infinitely many valid "
+            "balancings for an equation like this, so these are the "
+            "tidiest ones rather than all of them. Picking the wrong one "
+            "gives a confident, wrong atom economy."
+        )
+
+        if st.button("Use this balancing", type="primary"):
+            reactants, products = labelled[chosen_label]
+            try:
+                rxn = Reaction(
+                    reactants=reactants,
+                    products=products,
+                    desired_product=pending["desired"],
+                )
+                st.session_state["reaction"] = rxn
+                st.session_state["reactant_list"] = pending["reactants"]
+                st.session_state.pop("needs_coefficients", None)
+                st.session_state.pop("actual_yield", None)
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+    else:
+        st.markdown(
+            "No simple whole-number balancing turned up, which usually "
+            "means a typo in one of the formulas. Check them, or enter "
+            "coefficients yourself below."
+        )
+
+    with st.expander("Or enter the coefficients yourself"):
+        manual_reactants = {}
+        manual_products = {}
+
+        st.markdown("**Reactants**")
+        reactant_columns = st.columns(len(pending["reactants"]))
+        for column, formula in zip(reactant_columns, pending["reactants"]):
+            manual_reactants[formula] = column.number_input(
+                to_subscripts(formula),
+                min_value=1,
+                max_value=99,
+                value=1,
+                step=1,
+                key=f"coeff_r_{formula}",
+            )
+
+        st.markdown("**Products**")
+        product_columns = st.columns(len(pending["products"]))
+        for column, formula in zip(product_columns, pending["products"]):
+            manual_products[formula] = column.number_input(
+                to_subscripts(formula),
+                min_value=1,
+                max_value=99,
+                value=1,
+                step=1,
+                key=f"coeff_p_{formula}",
+            )
+
+        if st.button("Use these coefficients"):
+            try:
+                rxn = Reaction(
+                    reactants=manual_reactants,
+                    products=manual_products,
+                    desired_product=pending["desired"],
+                )
+                st.session_state["reaction"] = rxn
+                st.session_state["reactant_list"] = pending["reactants"]
+                st.session_state.pop("needs_coefficients", None)
+                st.session_state.pop("actual_yield", None)
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
 
 # --- The analysis -------------------------------------------------------
 if "reaction" in st.session_state:
@@ -417,16 +468,11 @@ if "reaction" in st.session_state:
     theoretical = rxn.theoretical_yield_g(reactant_masses)
     limiting = rxn.limiting_reactant(reactant_masses)
 
-    # Match the 0.1 g graduation of the reactant sliders. The cap is
+    # Match the 0.01 g graduation of the reactant sliders. The cap is
     # rounded DOWN so it can never sit above the theoretical yield, which
-    # would let the slider reach an impossible value. Reactions producing
-    # under 0.1 g fall back to a finer step, or there would be nothing to
-    # drag.
-    yield_step = 0.1
-    max_yield = math.floor(theoretical * 10) / 10
-    if max_yield < 0.1:
-        yield_step = 0.01
-        max_yield = math.floor(theoretical * 100) / 100
+    # would otherwise let the slider reach an impossible value.
+    yield_step = 0.01
+    max_yield = math.floor(theoretical * 100) / 100
     if max_yield < 0.01:
         max_yield = 0.01
 

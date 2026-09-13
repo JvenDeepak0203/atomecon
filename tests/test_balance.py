@@ -60,3 +60,63 @@ def test_analyze_with_lab_data_shows_grade(capsys):
     )
     captured = capsys.readouterr()
     assert "Green grade" in captured.out
+
+
+from atomecon import parse_formula
+from atomecon.balance import possible_balances
+
+
+def _is_atom_balanced(reactants, products):
+    totals = {}
+    for side, sign in ((reactants, 1), (products, -1)):
+        for formula, coeff in side.items():
+            for element, count in parse_formula(formula).items():
+                totals[element] = totals.get(element, 0) + sign * count * coeff
+    return all(value == 0 for value in totals.values())
+
+
+def test_every_offered_balance_actually_balances():
+    """A wrong suggestion here would be worse than no suggestion."""
+    for reactants, products in possible_balances(
+        ["C7H6O3", "C4H6O3"], ["C9H8O4", "C2H4O2"]
+    ):
+        assert _is_atom_balanced(reactants, products)
+
+
+def test_aspirin_offers_the_real_chemistry_first():
+    solutions = possible_balances(["C7H6O3", "C4H6O3"], ["C9H8O4", "C2H4O2"])
+    reactants, products = solutions[0]
+    assert reactants == {"C7H6O3": 1, "C4H6O3": 1}
+    assert products == {"C9H8O4": 1, "C2H4O2": 1}
+
+
+def test_ambiguous_equation_offers_several_choices():
+    solutions = possible_balances(["C7H6O3", "C4H6O3"], ["C9H8O4", "C2H4O2"])
+    assert len(solutions) > 1
+
+
+def test_unambiguous_equation_offers_exactly_one():
+    solutions = possible_balances(["CH4", "O2"], ["CO2", "H2O"])
+    assert len(solutions) == 1
+    assert solutions[0][0] == {"CH4": 1, "O2": 2}
+
+
+def test_no_solution_has_a_zero_coefficient():
+    """A zero means that species drops out, which is a different equation."""
+    for reactants, products in possible_balances(
+        ["C7H6O3", "C4H6O3"], ["C9H8O4", "C2H4O2"]
+    ):
+        for coeff in list(reactants.values()) + list(products.values()):
+            assert coeff >= 1
+
+
+def test_choice_of_balance_changes_atom_economy():
+    """Why the user must pick: the answer depends on it."""
+    solutions = possible_balances(["C7H6O3", "C4H6O3"], ["C9H8O4", "C2H4O2"])
+    economies = []
+    for reactants, products in solutions[:4]:
+        rxn = Reaction(
+            reactants=reactants, products=products, desired_product="C9H8O4"
+        )
+        economies.append(round(rxn.atom_economy(), 1))
+    assert len(set(economies)) > 1
