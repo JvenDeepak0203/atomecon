@@ -53,6 +53,25 @@ EXAMPLES = {
 # last five carry the raw inputs so the file can be loaded back in.
 # Computed results cannot be reversed into a reaction, so they are not
 # what gets re-imported.
+# Shared styling for the hand-built tables. st.dataframe gives no control
+# over column alignment, so tables that need centred numbers are written as
+# HTML instead. Every cell that could contain user text is escaped.
+TABLE_CSS = """
+<style>
+.atomecon-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.atomecon-table th, .atomecon-table td {
+    padding: 0.45rem 0.6rem;
+    text-align: center;
+    border-bottom: 1px solid rgba(140, 140, 140, 0.28);
+}
+.atomecon-table th {
+    font-weight: 600;
+    border-bottom: 2px solid rgba(140, 140, 140, 0.5);
+}
+.atomecon-table td.left, .atomecon-table th.left { text-align: left; }
+</style>
+"""
+
 MACHINE_COLUMNS = [
     "Reactant coefficients",
     "Product coefficients",
@@ -128,12 +147,20 @@ because every single run discards the water.
 **E-factor** counts grams of waste per gram of product. Lower is better;
 0 would mean nothing wasted at all.
 
+$$\\text{E-factor} = \\frac{\\text{total mass you put in} - \\text{mass of product you kept}}{\\text{mass of product you kept}}$$
+
+Everything that is not your product counts as waste: by-products, leftover
+reagents, whatever stayed on the glassware.
+
 **The floor.** E-factor cannot go below what atom economy permits. Even a
 flawless run discards whatever the equation sends elsewhere, so the best
-achievable E-factor is `100 / atom economy - 1`. A reaction at 50% atom
-economy can never beat 1.0, however carefully it is run. This app shows
-you that floor and grades the waste *above* it - the part you could
-actually have avoided.
+achievable E-factor is:
+
+$$\\text{E-factor floor} = \\frac{100}{\\text{atom economy}} - 1$$
+
+A reaction at 50% atom economy can never beat 1.0, however carefully it is
+run. This app shows you that floor and grades the waste *above* it - the
+part you could actually have avoided.
         """
     )
 
@@ -394,23 +421,23 @@ if "reaction" in st.session_state:
         )
 
         st.markdown("**Step 2: everything you put in**")
-        breakdown_rows = []
-        for row in parts["reactants"]:
-            breakdown_rows.append({
-                "Reactant": to_subscripts(row["formula"]),
-                "Coefficient": row["coefficient"],
-                "Molar mass (g/mol)": row["molar_mass"],
-                "Contributes (g)": row["mass"],
-            })
-        st.dataframe(
-            pd.DataFrame(breakdown_rows),
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "Molar mass (g/mol)": st.column_config.NumberColumn(format="%.2f"),
-                "Contributes (g)": st.column_config.NumberColumn(format="%.2f"),
-            },
+        breakdown_parts = ["<table class='atomecon-table'><thead><tr>"]
+        breakdown_parts.append(
+            "<th class='left'>Reactant</th><th>Coefficient</th>"
+            "<th>Molar mass (g/mol)</th><th>Contributes (g)</th>"
         )
+        breakdown_parts.append("</tr></thead><tbody>")
+        for row in parts["reactants"]:
+            breakdown_parts.append(
+                "<tr>"
+                f"<td class='left'>{html.escape(to_subscripts(row['formula']))}</td>"
+                f"<td>{row['coefficient']}</td>"
+                f"<td>{row['molar_mass']:.2f}</td>"
+                f"<td>{row['mass']:.2f}</td>"
+                "</tr>"
+            )
+        breakdown_parts.append("</tbody></table>")
+        st.markdown(TABLE_CSS + "".join(breakdown_parts), unsafe_allow_html=True)
         st.markdown(
             f"Total mass of reactants: **{parts['total_reactant_mass']:.2f} g**"
         )
@@ -544,7 +571,7 @@ if "reaction" in st.session_state:
 
             band_css = """
             <style>
-            .grade-bands { border-collapse: collapse; margin-bottom: 0.4rem; }
+            .grade-bands { border-collapse: collapse; margin-bottom: 0.4rem; width: 100%; }
             .grade-bands td, .grade-bands th {
                 padding: 0.3rem 0.7rem; text-align: center;
                 border-bottom: 1px solid rgba(140,140,140,0.25);
@@ -587,14 +614,24 @@ if "reaction" in st.session_state:
                 previous = threshold
             waste_rows += f"<tr><td>above {previous}</td><td><b>0</b></td></tr>"
 
-            band_html = (
-                band_css
-                + "<b>Atom economy</b> - the route you picked"
-                + f"<table class='grade-bands'><tr><th>Value</th><th>Points</th></tr>{ae_rows}</table>"
-                + "<b>Avoidable waste</b> - E-factor above the floor, i.e. how you ran it"
-                + f"<table class='grade-bands'><tr><th>Value</th><th>Points</th></tr>{waste_rows}</table>"
+            ae_table = (
+                "<b>Atom economy</b><br><span style='opacity:0.75;font-size:0.85rem'>"
+                "the route you picked</span>"
+                "<table class='grade-bands'><tr><th>Value</th><th>Points</th></tr>"
+                f"{ae_rows}</table>"
             )
-            st.markdown(band_html, unsafe_allow_html=True)
+            waste_table = (
+                "<b>Avoidable waste</b><br><span style='opacity:0.75;font-size:0.85rem'>"
+                "E-factor above the floor, i.e. how you ran it</span>"
+                "<table class='grade-bands'><tr><th>Value</th><th>Points</th></tr>"
+                f"{waste_rows}</table>"
+            )
+
+            band_col_left, band_col_right = st.columns(2)
+            with band_col_left:
+                st.markdown(band_css + ae_table, unsafe_allow_html=True)
+            with band_col_right:
+                st.markdown(band_css + waste_table, unsafe_allow_html=True)
 
             # Where this reaction actually landed, so the grid is not abstract.
             your_ae_points = rxn._points_for_atom_economy(rxn.atom_economy())
@@ -691,22 +728,6 @@ else:
     # Built by hand rather than with st.dataframe because that widget gives
     # no control over column alignment. Names are user-typed, so every cell
     # is escaped before it reaches the page.
-    table_css = """
-    <style>
-    .atomecon-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
-    .atomecon-table th, .atomecon-table td {
-        padding: 0.45rem 0.6rem;
-        text-align: center;
-        border-bottom: 1px solid rgba(140, 140, 140, 0.28);
-    }
-    .atomecon-table th {
-        font-weight: 600;
-        border-bottom: 2px solid rgba(140, 140, 140, 0.5);
-    }
-    .atomecon-table td.left, .atomecon-table th.left { text-align: left; }
-    </style>
-    """
-
     table_parts = ["<table class='atomecon-table'><thead><tr>"]
     table_parts.append(
         "<th class='left'>Name</th><th class='left'>Reaction</th>"
@@ -726,7 +747,7 @@ else:
         )
     table_parts.append("</tbody></table>")
 
-    st.markdown(table_css + "".join(table_parts), unsafe_allow_html=True)
+    st.markdown(TABLE_CSS + "".join(table_parts), unsafe_allow_html=True)
 
     st.caption(
         f"{len(log)} reaction(s), greenest first. Blank cells mean no lab "
